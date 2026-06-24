@@ -1,0 +1,112 @@
+<!-- RIDO brand direction board — fixed palette, react-to-this starting point -->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');
+  :root{
+    --midnight:#0B2A5B; --signal:#2A5BFF; --ivory:#F7F5EF; --white:#FFFFFF;
+    --mist:#E7E3DA; --ink:#14171F; --slate:#5B5F69;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  .wrap{background:var(--ivory);font-family:'Plus Jakarta Sans',system-ui,sans-serif;color:var(--ink);padding:40px 22px;min-height:100%}
+  .board{max-width:740px;margin:0 auto}
+  .eyebrow{font:600 11px/1 'Plus Jakarta Sans';letter-spacing:.16em;text-transform:uppercase;color:var(--slate)}
+  .wm{font:800 84px/1 'Sora';letter-spacing:-.04em;color:var(--midnight)}
+  .wm .i{color:var(--signal)}
+  .tag{font:500 16px/1.5 'Plus Jakarta Sans';color:var(--slate);margin-top:14px}
+  .tag b{color:var(--midnight);font-weight:700}
+  hr{border:0;border-top:1px solid var(--mist);margin:34px 0}
+  .sec-h{font:600 12px/1 'Plus Jakarta Sans';letter-spacing:.04em;color:var(--ink);margin-bottom:18px;display:flex;align-items:center;gap:10px}
+  .sec-h::after{content:"";flex:1;height:1px;background:var(--mist)}
+  .swatches{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:12px}
+  .sw{border:1px solid var(--mist);border-radius:12px;overflow:hidden;background:var(--white)}
+  .sw .chip{height:62px}
+  .sw .meta{padding:9px 11px}
+  .sw .nm{font:600 12px/1.2 'Plus Jakarta Sans';color:var(--ink)}
+  .sw .hex{font:500 11px/1.4 'Sora';letter-spacing:.02em;color:var(--slate);margin-top:2px}
+  .sw .use{font:400 10.5px/1.35 'Plus Jakarta Sans';color:var(--slate);margin-top:5px}
+  .type-row{display:grid;grid-template-columns:1fr;gap:20px}
+  .spec{border:1px solid var(--mist);border-radius:12px;background:var(--white);padding:18px 20px}
+  .spec .lbl{font:600 10.5px/1 'Plus Jakarta Sans';letter-spacing:.13em;text-transform:uppercase;color:var(--slate);margin-bottom:10px}
+  .disp{font:700 30px/1.1 'Sora';letter-spacing:-.02em;color:var(--midnight)}
+  .disp small{display:block;font:400 13px/1.4 'Plus Jakarta Sans';letter-spacing:0;color:var(--slate);margin-top:6px}
+  .bodyspec{font:400 15px/1.55 'Plus Jakarta Sans';color:var(--ink)}
+  .nums{font:600 26px/1 'Sora';color:var(--midnight);font-feature-settings:"tnum" 1;letter-spacing:.01em}
+  .nums span{color:var(--signal)}
+  .ui-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .card{border:1px solid var(--mist);border-radius:14px;background:var(--white);padding:16px}
+  .card .k{font:500 12px/1 'Plus Jakarta Sans';color:var(--slate)}
+  .fare{display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+  .fare .price{font:700 22px/1 'Sora';color:var(--ink);font-feature-settings:"tnum" 1}
+  .fare .eta{font:500 12px/1 'Plus Jakarta Sans';color:var(--signal);background:#2A5BFF14;padding:5px 9px;border-radius:20px}
+  .btn{display:block;width:100%;text-align:center;background:var(--midnight);color:#fff;font:700 15px/1 'Plus Jakarta Sans';padding:15px;border-radius:12px;margin-top:14px}
+  .btn.alt{background:var(--signal)}
+  .note{font:400 12.5px/1.6 'Plus Jakarta Sans';color:var(--slate)}
+  .note b{color:var(--midnight);font-weight:700}
+  .pill{display:inline-block;font:500 11.5px/1 'Plus Jakarta Sans';color:var(--midnight);background:#0B2A5B12;padding:6px 11px;border-radius:20px;margin:4px 6px 0 0}
+  @media(max-width:560px){.wm{font-size:60px}.ui-row{grid-template-columns:1fr}}
+</style>
+
+<div class="wrap">
+  <div class="board">
+
+    <div class="eyebrow">Brand direction · v0 · react to this</div>
+    <div class="wm" style="margin-top:14px">r<span class="i">i</span>do</div>
+    <div class="tag"><b>Get a rido.</b> The fair way to move.</div>
+
+    <hr>
+
+    <div class="sec-h">Color</div>
+    <div class="swatches">
+      <div class="sw"><div class="chip" style="background:#0B2A5B"></div><div class="meta"><div class="nm">Midnight</div><div class="hex">#0B2A5B</div><div class="use">Brand, headers, primary buttons, map pins</div></div></div>
+      <div class="sw"><div class="chip" style="background:#2A5BFF"></div><div class="meta"><div class="nm">Signal</div><div class="hex">#2A5BFF</div><div class="use">Actions, links, live states, the accent</div></div></div>
+      <div class="sw"><div class="chip" style="background:#F7F5EF;border-bottom:1px solid #E7E3DA"></div><div class="meta"><div class="nm">Ivory</div><div class="hex">#F7F5EF</div><div class="use">App canvas / background</div></div></div>
+      <div class="sw"><div class="chip" style="background:#FFFFFF;border-bottom:1px solid #E7E3DA"></div><div class="meta"><div class="nm">White</div><div class="hex">#FFFFFF</div><div class="use">Cards, sheets, surfaces</div></div></div>
+      <div class="sw"><div class="chip" style="background:#E7E3DA"></div><div class="meta"><div class="nm">Mist</div><div class="hex">#E7E3DA</div><div class="use">Dividers, hairlines, borders</div></div></div>
+      <div class="sw"><div class="chip" style="background:#14171F"></div><div class="meta"><div class="nm">Ink</div><div class="hex">#14171F</div><div class="use">Body text (Slate #5B5F69 for muted)</div></div></div>
+    </div>
+
+    <hr>
+
+    <div class="sec-h">Type</div>
+    <div class="type-row">
+      <div class="spec">
+        <div class="lbl">Display — Sora</div>
+        <div class="disp">Rides that pay drivers right.<small>Confident, geometric, a little modern. Headlines, wordmark, big moments. Used with restraint.</small></div>
+      </div>
+      <div class="spec">
+        <div class="lbl">Body / UI — Plus Jakarta Sans</div>
+        <div class="bodyspec">Cheaper for you, fair for the people driving you. Clean and highly legible at small sizes — the workhorse for every screen, label, and button.</div>
+      </div>
+      <div class="spec">
+        <div class="lbl">Numerals — tabular, always</div>
+        <div class="nums">$8.40 · 4 min · <span>2.1 mi</span></div>
+        <div class="bodyspec" style="margin-top:10px;font-size:13px;color:var(--slate)">Fares, ETAs, and distances line up to the decimal. Non-negotiable for a money app.</div>
+      </div>
+    </div>
+
+    <hr>
+
+    <div class="sec-h">In the app</div>
+    <div class="ui-row">
+      <div class="card">
+        <div class="k">Your ride</div>
+        <div class="fare"><span class="price">$8.40</span><span class="eta">4 min away</span></div>
+        <div class="btn">Get a rido</div>
+      </div>
+      <div class="card">
+        <div class="k">Driver keeps</div>
+        <div class="fare"><span class="price">$7.30</span><span class="eta">87%</span></div>
+        <div class="btn alt">Accept</div>
+      </div>
+    </div>
+    <div class="note" style="margin-top:14px">Light UI on ivory, <b>Midnight</b> for structure and primary actions, <b>Signal</b> for live/interactive moments. Sleek like the apps you admire — but our own layout, not a clone. The brand is anti-Uber; it shouldn't wear Uber's clothes.</div>
+
+    <hr>
+
+    <div class="sec-h">Logo</div>
+    <div class="note"><b>Wordmark-forward</b> — RIDO is a word people say out loud ("get a rido"), so the name carries the mark. Lowercase for warmth and modernity; the <b>i</b> is the single accent (refine to just the tittle/dot in Design). Uppercase <b>RIDO</b> as the alt for places that need more authority.</div>
+    <div style="margin-top:14px">
+      <span class="pill">no wheel</span><span class="pill">no location pin</span><span class="pill">no speed lines</span><span class="pill">no speedometer</span><span class="pill">the accent does the talking</span>
+    </div>
+
+  </div>
+</div>

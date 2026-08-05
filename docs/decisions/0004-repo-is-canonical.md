@@ -20,7 +20,7 @@ Three options were considered:
 | Option | Why not |
 |---|---|
 | **(b) Vault canonical, repo generated** | Requires a generation pipeline nobody will build and that bit-rots in week two. And Claude Code cannot read the vault — the agent that does the work would be reading a derived copy. |
-| **(c) Split by audience** (strategy in vault, technical in repo) | Fails on shared facts. "Commission is 20/12/8 bracketed" is needed by both audiences, so it gets written twice, and two copies drift. This is exactly how `brand/DESIGN.md` came to specify 52px inputs while `brand/design-system.md` specified 44px. |
+| **(c) Split by audience** (strategy in vault, technical in repo) | Fails on shared facts. "Commission is 20/12/8 bracketed" is needed by both audiences, so it gets written twice, and two copies drift. This is exactly how a duplicate design doc came to specify 52px inputs while `brand/design-system.md` specified 44px. |
 | **(a) Repo canonical** | Chosen. |
 
 ## Decision

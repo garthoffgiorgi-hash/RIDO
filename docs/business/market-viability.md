@@ -3,7 +3,7 @@
 *Context doc condensing the full viability analysis. Verdict, the key numbers, and the Empower lessons. Figures are cited where they came from the web; estimates are labeled.*
 
 ## Verdict: **Refine — leaning go**
-The wedge is real and the math backs it. California's regulatory path is navigable (the opposite of Empower's self-inflicted death). **But** a pure flat subscription can't carry California's fixed compliance costs at early density — so the model was refined to a **hybrid: low flat fee + graduated commission** (see `monetization-model.md`).
+The wedge is real and the math backs it. California's regulatory path is navigable (the opposite of Empower's self-inflicted death). **But** a pure flat subscription can't carry California's fixed compliance costs at early density — so the model was refined to a **hybrid: low flat fee + graduated commission** (see `monetization.md`).
 
 - **Biggest risk:** the cold-start × fixed-cost collision — you carry expensive per-market fixed costs (commercial insurance above all) from day one, but subscription revenue only materializes at high driver density you can't reach until two-sided liquidity is solved.
 - **Validate first:** a real commercial-TNC **insurance quote** (the master variable — see below), and a cheap UCSD demand-side test (does rider liquidity show up).
@@ -35,4 +35,4 @@ A driver beats incumbent commission on a subscription when **monthly rides N > S
 **Meta-lesson:** copy the economics, do the *opposite* on compliance.
 
 ## Regulatory & insurance (CA / San Diego) — summary
-California regulates TNCs at the **state** level via the **CPUC** (one agency, navigable; small players get permits). The load-bearing cost is the **$1M commercial insurance** RIDO must carry while drivers are en route/carrying a passenger — privately negotiated, and for a startup with no loss history it may be a fixed-floor or a per-ride rate, swinging the pilot cost between a few thousand and six figures. **This single number gates the whole financial model.** Prop 22 was upheld (CA Supreme Court, July 2024) → drivers can be independent contractors, with conditions. Full detail in `regulatory-compliance.md`. **Needs a real insurance broker and a real CA transportation/employment lawyer.**
+California regulates TNCs at the **state** level via the **CPUC** (one agency, navigable; small players get permits). The load-bearing cost is the **$1M commercial insurance** RIDO must carry while drivers are en route/carrying a passenger — privately negotiated, and for a startup with no loss history it may be a fixed-floor or a per-ride rate, swinging the pilot cost between a few thousand and six figures. **This single number gates the whole financial model.** Prop 22 was upheld (CA Supreme Court, July 2024) → drivers can be independent contractors, with conditions. Full detail in `../compliance/ca-tnc.md`. **Needs a real insurance broker and a real CA transportation/employment lawyer.**

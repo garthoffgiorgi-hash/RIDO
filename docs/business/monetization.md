@@ -1,6 +1,6 @@
 # RIDO — Monetization Model (finalized direction)
 
-*The pricing decisions. This is the most code-relevant doc — the commission logic in the app must match it exactly. See `technical-architecture.md` for how it's implemented.*
+*The pricing decisions. This is the most code-relevant doc — the commission logic in the app must match it exactly. See `../architecture/data-model.md` for how it's implemented.*
 
 ## Steady-state model: hybrid
 **$50/month flat fee + graduated commission.** Chosen over pure flat subscription because a flat sub's revenue tracks driver headcount, not GMV, and can't cover California's high fixed compliance costs (esp. the $1M insurance) at early density. The hybrid keeps the driver-favorable wedge while scaling revenue with GMV.
@@ -27,7 +27,7 @@
 - Implementation note: this means the $50 fee is a state per driver/market, not a global calendar event. Don't bake a fixed date into pricing code.
 
 ## The master variable: commercial insurance
-The $1M commercial liability RIDO must carry (CA CPUC requirement, RIDO's obligation) is the single biggest cost and the biggest unknown. Its *structure* — a fixed monthly minimum premium vs a per-ride/per-mile rate — swings the pilot's cash burn by an order of magnitude (a few thousand vs six figures). **A broker quote is the #1 unresolved action; it gates the validity of every number here.** (The interactive model — `../models/rido-pilot-model.jsx` — lets you toggle this and see the cash hole move.)
+The $1M commercial liability RIDO must carry (CA CPUC requirement, RIDO's obligation) is the single biggest cost and the biggest unknown. Its *structure* — a fixed monthly minimum premium vs a per-ride/per-mile rate — swings the pilot's cash burn by an order of magnitude (a few thousand vs six figures). **A broker quote is the #1 unresolved action; it gates the validity of every number here.** (The interactive model — `../../tools/pilot-model/PilotModel.jsx` — lets you toggle this and see the cash hole move.)
 
 ## Unit-economics intuition (for sanity checks)
 - Driver take-home advantage over incumbents is real but shrinks as the flat fee bites at low volume and grows as Tier-3 (8%) kicks in at high volume.

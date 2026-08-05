@@ -24,7 +24,7 @@ The CA Supreme Court **upheld Prop 22 (Castellanos v. State, July 2024)** → ap
 ## Driver & vehicle compliance (these create product requirements)
 CA TNCs must run: national criminal + sex-offender database checks, a DMV driver-history check, a **19-point vehicle inspection** before service and annually (or every 50k miles), a driver training program, a zero-tolerance drug/alcohol policy, and a 10-hour driving cap. Plus a **CPUC fee of 0.33% of gross CA revenue**, and airport per-trip fees (confirm San Diego International's).
 
-### → Product implications (carried into `technical-architecture.md` and CLAUDE.md)
+### → Product implications (carried into `../architecture/data-model.md` and CLAUDE.md)
 - `drivers` needs: `background_check_status`, `vehicle_inspection_status` (+ inspection date), `dmv_check_status`, `training_completed`.
 - **Activation gate:** a driver cannot accept rides unless background check + vehicle inspection are passed and status is active. Enforce in DB and app, not just UI.
 - Track and remit the 0.33% CPUC fee and any airport surcharges as first-class line items (the Empower lesson: never build a discount on skipped fees).

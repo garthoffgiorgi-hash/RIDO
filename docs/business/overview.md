@@ -19,7 +19,7 @@ Founder's conviction: Uber/Lyft are predatory monopolies that underpay drivers �
 **San Diego / UCSD.** Dense, concentrated geography with predictable demand (nightlife, airport runs, campus) — good for the cold-start problem. California regulates TNCs at the state level (CPUC), a cleaner path than the city-by-city regulators that destroyed Empower.
 
 ## Status
-Pre-launch, capital-constrained, first-time founder (technically strong, newer to the business side). Monetization model is finalized in direction (see `monetization-model.md`); brand is established (see `../brand/`); database architecture is designed (see `technical-architecture.md`).
+Pre-launch, capital-constrained, first-time founder (technically strong, newer to the business side). Monetization model is finalized in direction (see `monetization.md`); brand is established (see `../brand/`); database architecture is designed (see `../architecture/data-model.md`).
 
 ## The standing strategic lenses (pressure-test everything against these)
 Liquidity/cold-start · per-city geographic density · unit economics at real utilization · driver-supply economics (who actually benefits) · regulation/insurance/classification as *viability*, not paperwork · incumbent response (they have near-infinite capital).

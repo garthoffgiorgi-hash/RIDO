@@ -1,8 +1,8 @@
 # RIDO — Technical Architecture
 
-> Reconstructed from our prior technical sessions. **Reconcile with your actual migrations/code** — where this and the repo disagree, the repo wins; then update this doc. Pairs with `../monetization-model.md` (the rules) and CLAUDE.md (the invariants).
+> Reconstructed from our prior technical sessions. **Reconcile with your actual migrations/code** — where this and the repo disagree, the repo wins; then update this doc. Pairs with `../business/monetization.md` (the rules) and CLAUDE.md (the invariants).
 >
-> **Status (checked against the uploaded repo): none of this is built yet.** The repo is a static marketing site — no backend, no database, no app. Everything below is the target design to build. See `reconciliation.md`.
+> **Status (checked against the uploaded repo): none of this is built yet.** The repo is a static marketing site — no backend, no database, no app. Everything below is the target design to build. See `../roadmap.md`.
 
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.

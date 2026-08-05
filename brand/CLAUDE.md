@@ -9,9 +9,9 @@
 | `boards/*.html` | Hand-written reference boards. Illustrative only — if a board and `design-system.md` disagree, **the doc wins.** |
 | `exports/*.dc.html` | Claude Design exports. **Reference artifacts, not source.** |
 
-**If a value appears in two places, delete one.** This has already bitten us: a duplicate
-`DESIGN.md` specified 52px inputs while `design-system.md` specified 44px, and nothing caught it
-because both files read as authoritative.
+**If a value appears in two places, delete one.** This has already bitten us: a duplicate design
+doc (since merged into `design-system.md` and removed) specified 52px inputs while
+`design-system.md` specified 44px, and nothing caught it because both files read as authoritative.
 
 ## Claude Design exports (`exports/`)
 

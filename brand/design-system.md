@@ -41,6 +41,11 @@ Semantic (derive, keep muted): success → a desaturated green; danger → a war
 ### Spacing & shape
 - Spacing scale (px): 4, 8, 12, 16, 20, 24, 32, 40.
 - Corner radius: inputs/buttons `12px`; cards `16–18px`; pills `20px+`. **Generous and rounded** — it's core to the sleek-but-warm feel.
+- Control height: **44px** for inputs and buttons alike — the iOS/Android minimum comfortable
+  tap target, and one height for every control keeps a form or a bottom sheet visually level.
+  (An earlier duplicate spec used 52px; 44px wins because it's the value already load-bearing
+  elsewhere in this doc — see "Touch targets ≥ 44px" below — and two heights for the same class
+  of control had no stated reason to differ.)
 - Borders: `1px solid --mist`. No rounded corners on single-sided borders.
 - Elevation: prefer the border + tonal lift over shadows. If a shadow is needed (active sheet), keep it soft and minimal. Flat over glossy.
 
@@ -69,7 +74,7 @@ Two cases, two jobs, one constant accent.
 
 - **Buttons.** *Primary* — solid `--midnight`, white text, radius 12, weight 700 ("Get a rido," "Accept"). *Accent/live* — solid `--signal`, white text (for in-the-moment actions, e.g. confirm pickup). *Secondary* — white fill, `--mist` border, `--ink` text. *Ghost* — transparent, `--slate` text. Active state: subtle scale(0.98). Disabled: reduced opacity, no color shift.
 - **Cards.** White fill, `--mist` 1px border, radius 16–18, padding 16–20. The default container for everything (a ride, a driver, a fare). This is the signature surface.
-- **Inputs.** White fill, `--mist` border, radius 12, 44px tall; focus → `--signal` ring. Labels in Slate, sentence case. Errors state what's wrong and how to fix it, in the interface's voice (no apologies).
+- **Inputs.** White fill, `--mist` border, radius 12, 44px tall (see Spacing & shape); focus → `--signal` ring. Labels in Slate, sentence case. Errors state what's wrong and how to fix it, in the interface's voice (no apologies).
 - **Fare / ETA chip.** Pill (radius 20), tinted Signal at low alpha, Signal text; tabular numerals. Used for "4 min away," distances, surge.
 - **Nav / top bar.** Lowercase `rido` wordmark left (the voice register, since it's in-product), minimal chrome, white or ivory.
 - **Bottom sheet.** The rideshare workhorse (request, driver-matched, in-progress). White, top radius 18, slides over a dimmed map. Tabular fare, primary CTA pinned bottom.
@@ -79,7 +84,19 @@ Two cases, two jobs, one constant accent.
 
 ---
 
-## 4. Voice in the UI (so copy matches design)
+## 4. Motion
+
+- **Default:** subtle, purposeful, never decorative. `transition: 150–200ms ease`.
+- **Splash beat:** lowercase `rido` appears → the Signal-blue i-dot pulses outward (locate-signal
+  ping, `scale(1) → scale(2.6), opacity(0.7) → opacity(0)`, ~600ms ease-out) → resolves into
+  uppercase `RIDO` icon. Voice becoming monument. One ring, one pulse.
+- **Bottom sheet:** slides up with `cubic-bezier(0.32, 0.72, 0, 1)`, 320ms.
+- **Reduced motion:** all animations off except instant state transitions. Respect
+  `prefers-reduced-motion`.
+
+---
+
+## 5. Voice in the UI (so copy matches design)
 - Plain verbs, sentence case, active. Buttons name exactly what happens ("Get a rido," not "Submit"); the name stays consistent through the flow.
 - Say what a thing does, not how it's built. "Driver keeps 87%," not "payout engine."
 - Irreverence points *outward* (at incumbents, in marketing); warmth + steadiness point *inward* (at rider/driver, in product — getting in a car at night needs reassurance, not jokes).
@@ -87,7 +104,7 @@ Two cases, two jobs, one constant accent.
 
 ---
 
-## 5. Screen blueprints (so Claude Design can start)
+## 6. Screen blueprints (so Claude Design can start)
 
 **Landing page (marketing — visual ROI highest, build in Design):**
 Hero with the monument `RIDO` + a tangible-first headline (cheaper + fair, not "fight greed"); the mission as the resonant why below the fold; a driver-vs-incumbent take comparison (concrete numbers); "get a rido" as the spoken hook; the card-on-ivory aesthetic throughout; a clean CTA. Sleek like the apps Giorgi admires — but a distinct RIDO layout, *not* an Uber clone (the brand is anti-incumbent; it must not wear incumbent clothes).
@@ -100,5 +117,5 @@ Online/offline toggle (Signal when online), incoming-request card with fare + **
 
 ---
 
-## 6. Quality floor
+## 7. Quality floor
 Responsive to mobile, visible keyboard focus (Signal ring), reduced-motion respected, sufficient contrast (Midnight/Ink on light pass; check Signal-on-white for text uses). Light UI only — this is a fixed-palette brand, it does not invert to a dark theme unless a dark mode is deliberately designed.

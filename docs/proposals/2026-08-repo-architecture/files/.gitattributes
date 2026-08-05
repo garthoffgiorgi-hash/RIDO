@@ -1,0 +1,14 @@
+# Claude Design exports are generated bundles: base64 woff2 assets + a JSON-encoded HTML
+# template. Diffing them produces thousands of meaningless lines and merging them produces
+# corruption. Treat them as binary artifacts — replace, never merge.
+*.dc.html -diff merge=binary linguist-generated
+
+# Fonts and other binary assets.
+*.woff2 binary
+*.woff  binary
+
+# Generated Supabase types: committed on purpose, but not worth reviewing line by line.
+apps/web/src/types/database.types.ts linguist-generated
+
+# Normalize line endings for everything textual.
+* text=auto eol=lf

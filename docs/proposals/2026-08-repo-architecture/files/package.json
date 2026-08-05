@@ -1,0 +1,21 @@
+{
+  "name": "rido",
+  "private": true,
+  "version": "0.0.0",
+  "description": "RIDO — a driver-favorable rideshare marketplace.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "check:context": "node scripts/check-context.mjs",
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "test": "npm run test --workspaces --if-present",
+    "test:pricing:deno": "deno test packages/pricing/src/",
+    "types:generate": "supabase gen types typescript --local > apps/web/src/types/database.types.ts"
+  }
+}

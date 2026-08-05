@@ -1,0 +1,15 @@
+{
+  "name": "@rido/pricing",
+  "private": true,
+  "version": "0.0.0",
+  "description": "RIDO commission and payout math. Pure, dependency-free, runtime-agnostic.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "comment": "No dependencies and no devDependencies, on purpose. This package is imported by a bundler (apps/web), by Deno (supabase/functions), and by a browser tool (tools/pilot-model). Adding a dependency breaks at least one of them. Test tooling comes from the consuming workspace.",
+  "scripts": {
+    "test": "node --test --experimental-strip-types src/"
+  }
+}

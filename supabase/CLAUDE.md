@@ -33,16 +33,18 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
 
 ## Edge Functions
 
-- Functions **import `packages/pricing` and call it.** They never re-implement the math. If the
-  Supabase CLI can't bundle the import, fix the bundling — copying the file into `_shared/` is
-  how the books drift apart. (See ADR-0005 for the resolution path and its fallback.)
+- Functions **import `@rido/pricing` and call it.** They never re-implement the math.
+  `supabase/functions/deno.json` maps that specifier to `packages/pricing/src/index.ts` — one
+  shared alias for every function, verified to resolve, run, and bundle under Deno (ADR-0005).
+  Write `import { commissionForRide } from "@rido/pricing"`, not a `../../../` relative path.
 - `complete-ride` is the critical path, in this order: read MTD `gross_fare_cents` from
   `driver_monthly_stats` → compute the bracketed commission for *this* ride against that position
   → snapshot `commission_rate_bps` / `commission_cents` / `driver_payout_cents` onto `rides` →
   mark the ride `completed`. The `bump_monthly_stats` trigger then updates MTD atomically, so the
   next ride reads a correct position without a race.
 - **Never trust a `fare_cents` sent by a client.** Verify it server-side against the quoted fare.
-- Each function gets its own `deno.json`. The service-role key stays inside the function.
+- Deploy with `--use-api` (no Docker required). The service-role key stays inside the function —
+  never in `deno.json`, which is committed and holds only the import alias.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

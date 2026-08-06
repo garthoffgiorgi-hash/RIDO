@@ -10,6 +10,6 @@
   },
   "comment": "No dependencies and no devDependencies, on purpose. This package is imported by a bundler (apps/web), by Deno (supabase/functions), and by a browser tool (tools/pilot-model). Adding a dependency breaks at least one of them. Test tooling comes from the consuming workspace.",
   "scripts": {
-    "test": "node --test --experimental-strip-types src/"
+    "test": "if find src -name '*.test.ts' -print -quit | grep -q .; then find src -name '*.test.ts' -print0 | xargs -0 node --test --experimental-strip-types; else echo 'No src/*.test.ts files yet - nothing to run.'; fi"
   }
 }

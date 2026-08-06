@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@rido/pricing": "../../packages/pricing/src/index.ts"
+  }
+}

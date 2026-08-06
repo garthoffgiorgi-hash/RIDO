@@ -53,12 +53,20 @@ apps/web/          packages/pricing/          supabase/          tools/
   week of building at the root raises this price.
 - The economics model can import `@rido/pricing` instead of carrying its own math, so the
   founder's financial model and the production books are provably the same rule.
-- **Risk — the one thing to verify before Phase 2.** Whether the Supabase CLI bundles an import
-  from `../../packages/` on deploy is version-dependent; sharing code outside `supabase/functions/`
-  has historically been the rough edge in monorepo setups, though recent CLI releases support it.
-  Spike it with a throwaway function and a real deploy **before** writing `complete-ride`.
-  Fallbacks, in order of preference: a per-function `deno.json` import map; a build step that
-  emits into `supabase/functions/_shared/`; and only as a last resort a checked-in copy — which
-  must then be guarded by CI byte-equality, never maintained by hand.
+- **Verified (2026-08-05): the import-map alias works.** Spiked with Deno 2.9.4 and Supabase CLI
+  2.111.0 — a throwaway Edge Function importing `@rido/pricing` via a `deno.json` import map
+  (mapped to `../../packages/pricing/src/index.ts`) type-checked (`deno check`), ran
+  (`Deno.serve`), and bundled (`deno bundle`) identically to a raw relative import; both produced
+  the same bracketed-commission result across a tier boundary. **Decision: use the import-map
+  alias, not a raw relative path.** `supabase/functions/deno.json` maps `@rido/pricing` so
+  function code reads the same specifier `apps/web` does, and relocating the package later only
+  touches that one file.
+  - **Still unverified: a real authenticated `functions deploy` and `functions serve`.** No
+    Docker daemon and no linked Supabase project were available to spike against, so module
+    *resolution* is proven but the actual upload path is not. Confirm on the first real deploy of
+    `complete-ride`, using `--use-api` (documented in 2.111.0, no Docker required).
+  - Fallback if a real deploy surfaces something the local spike didn't: a build step emitting
+    into `supabase/functions/_shared/`, guarded by CI byte-equality against `packages/pricing` —
+    never a hand-maintained copy.
 - Regardless of how the import resolves, **`packages/pricing`'s test suite runs under both Deno
   and the web runner.** That cross-runtime run is the actual guarantee that the two agree.

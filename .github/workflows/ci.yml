@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  context-check:
+    name: Context drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      - run: npm run check:context
+
+  pricing-node:
+    name: packages/pricing tests (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      # packages/pricing is dependency-free by design (packages/pricing/CLAUDE.md) — no install
+      # step needed. The test script itself no-ops cleanly until Phase 2 adds *.test.ts files.
+      - run: npm test --workspace=packages/pricing
+
+  pricing-deno:
+    name: packages/pricing tests (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Type-checks under Deno's own resolution rules regardless of whether tests exist yet —
+      # this is what actually proves the module Edge Functions import stays Deno-compatible.
+      - run: npm run check:pricing:deno
+      - run: npm run test:pricing:deno

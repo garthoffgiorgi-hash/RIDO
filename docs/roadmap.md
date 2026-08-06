@@ -37,7 +37,7 @@ The repo is a **static marketing site** (two HTML pages, plain CSS/JS, no build)
 
 **Phase 1 — foundation:** scaffold Next.js + TS + Tailwind (map brand tokens into the Tailwind config); set up Supabase project; wire auth; add the 5 tables as migrations; seed `commission_tiers`.
 
-**Phase 2 — money spine:** `lib/pricing/` pure functions (graduated commission, pilot $0 fee) with unit tests at every tier boundary; `completeRide` Edge Function + `bump_monthly_stats` trigger; Stripe (subscription for flat fee, Connect for payouts).
+**Phase 2 — money spine:** `packages/pricing/` pure functions (graduated commission, pilot $0 fee) with unit tests at every tier boundary; `completeRide` Edge Function + `bump_monthly_stats` trigger; Stripe (subscription for flat fee, Connect for payouts). **Also:** once implemented, derive the published marketing percentage (`docs/business/monetization.md`) from `packages/pricing` directly — retire the hand-computed interim figure.
 
 **Phase 3 — surfaces:** marketing landing on the new brand (Claude Design → handoff); rider request flow; driver view (online/offline, incoming request with "you keep $X", MTD tier progress). Mapbox integration.
 

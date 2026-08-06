@@ -45,6 +45,7 @@ docs/
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride rate? | The entire financial model | Broker |
 | 2 | Prop 22 earnings floor × "drivers set fares" — who owes what? | Driver classification, payout design | CA attorney |
 | 3 | Does RIDO absorb Stripe's ~2.9% + $0.30, or pass it to drivers? | Take-rate math on low fares | Founder |
-| 4 | Does the Supabase CLI bundle imports from `packages/` on deploy? | Whether pricing can be shared as source | Founder — 30 min spike |
 
-Answering one of these produces an ADR. Until then it stays here, visible.
+Answering one of these produces an ADR. Until then it stays here, visible. (Question 4 — Supabase
+CLI import bundling — was answered by a real spike and removed; see
+`decisions/0005-monorepo-shaped-layout.md`.)

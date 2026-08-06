@@ -16,6 +16,29 @@
 - Rates live in a `commission_tiers` config table — changeable without a deploy. Never hardcode them.
 - Worked example, $3,600 GMV/driver-mo: $1,000×20% + $2,000×12% + $600×8% = $488 (~13.6% blended). Driver keeps $3,112; an incumbent at 30% would take $1,080.
 
+## Published driver-keeps figure
+
+**Use ~86% (86.4% precisely), commission-only, until `packages/pricing` computes it directly.**
+Reusing the worked example above ($3,600 GMV/driver-mo → driver keeps $3,112) rather than a new
+number, so the marketing figure and the worked example can never quietly disagree.
+
+- **Basis: commission-only, no flat fee.** Matches the pilot state today (ADR-0003: fee is $0
+  during the pilot) — so this is also the *launch-accurate* number, not an aspirational one.
+- **Don't publish a figure net of the flat fee or net of card processing.** The fee-adjusted
+  number depends on a volume assumption that keeps moving with GMV; the processing-adjusted
+  number depends on Open Question #3 in `docs/README.md` (who absorbs Stripe's cut) — unresolved.
+  Publishing either now means republishing the moment either question resolves.
+- **The true per-fare range is 80%–92%**, tier-implied. 86% is the *blended monthly* figure at
+  the example volume above — a single ride's keep-rate depends on the driver's month-to-date
+  position, not one fixed number. Don't present 86% as a per-ride guarantee.
+- **⚠️ Needs reconciling with the landing page.** `brand/exports/2026-08-05-landing-v1.md`
+  currently illustrates $5,000/mo (88%) — a different, also-correct volume, not an error, but the
+  published site should cite one number. Pick a standard GMV assumption and update whichever file
+  disagrees; the checker won't catch this on its own — it's a duplicated derived figure, not a
+  hardcoded pricing constant.
+- **⚠️ Superseded once Phase 2 lands.** `packages/pricing`'s `commissionForRide` makes this a
+  computed value instead of a hand-maintained one — tracked in `docs/roadmap.md`, Phase 2.
+
 ## Launch pilot: 6 months, no flat fee, commission still on
 - **Waive the $50 flat fee for the first 6 months; keep the graduated commission running.**
 - Rationale: the flat fee is what punishes low early volume during cold-start (a driver pays $50 whether they earn $200 or $2,000). The commission is self-calibrating — a driver doing few rides pays a cut of few rides. So dropping the fee removes the cold-start disincentive while commission keeps *some* revenue flowing against fixed costs.

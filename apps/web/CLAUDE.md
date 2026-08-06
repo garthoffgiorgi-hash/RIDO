@@ -51,5 +51,8 @@ Tokens come from `brand/design-system.md`, mapped **once** into `tailwind.config
   from `@rido/pricing`. Never from arithmetic inline in JSX.
 - The driver-facing **"you keep $X.XX (Y%)"** figure is the product's core promise made visible.
   If it can't be sourced from a snapshot or the pricing package, **don't render a number.**
+- Marketing/aggregate percentages (e.g. "drivers keep X%" on a landing page) cite the one figure
+  in `docs/business/monetization.md` — never invent or recompute one per-component. That figure
+  is interim until Phase 2 computes it from `@rido/pricing` directly.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").

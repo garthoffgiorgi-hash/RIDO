@@ -1,0 +1,42 @@
+/* RIDO — Color tokens
+ * Fixed palette. Two blues + ivory/white/mist + ink/slate. Light UI only — no dark inversion.
+ * "Do not add colors beyond this set." (DESIGN.md §2)
+ */
+:root {
+  /* ---- Base palette ---- */
+  --midnight: #0B2A5B; /* Primary brand. Headers, primary buttons, map markers, uppercase wordmark */
+  --signal:   #2A5BFF; /* The single accent. Interactive/live states, links, the i/I accent, focus */
+  --ivory:    #F7F5EF; /* App canvas / page background */
+  --white:    #FFFFFF; /* Cards, sheets, surfaces that lift off the ivory */
+  --mist:     #E7E3DA; /* Dividers, hairlines, 1px borders */
+  --ink:      #14171F; /* Primary text */
+  --slate:    #5B5F69; /* Secondary / muted text, labels, captions */
+
+  /* Optional humanizer — illustration accents ONLY if blue ever feels cold. Not core. */
+  --gold:     #E8A33D;
+
+  /* ---- Signal tints (derived; the accent at low alpha) ---- */
+  --signal-08: rgba(42, 91, 255, 0.08); /* fare/ETA chip background */
+  --signal-12: rgba(42, 91, 255, 0.12); /* avatar background */
+  --signal-14: rgba(42, 91, 255, 0.14); /* chip background, hover tint */
+  --signal-22: rgba(42, 91, 255, 0.22); /* focus ring */
+  --midnight-08: rgba(11, 42, 91, 0.08); /* midnight pill / tint */
+  --midnight-12: rgba(11, 42, 91, 0.12);
+
+  /* ---- Semantic status (derive, keep muted — status only, never decoration) ---- */
+  --success: #2E8B6F; /* desaturated green */
+  --success-12: rgba(46, 139, 111, 0.12);
+  --danger:  #C2453B; /* warm red */
+  --danger-12: rgba(194, 69, 59, 0.12);
+
+  /* ---- Semantic aliases ---- */
+  --bg-canvas:    var(--ivory);
+  --surface-card: var(--white);
+  --border-hair:  var(--mist);
+  --text-primary: var(--ink);
+  --text-muted:   var(--slate);
+  --text-on-dark: var(--white);
+  --brand:        var(--midnight);
+  --accent:       var(--signal);
+  --focus-ring:   var(--signal-22);
+}

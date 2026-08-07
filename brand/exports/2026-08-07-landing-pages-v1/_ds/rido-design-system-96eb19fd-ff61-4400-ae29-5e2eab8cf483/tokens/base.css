@@ -1,0 +1,35 @@
+/* RIDO — Minimal base resets & brand defaults.
+ * Light UI only. Sets the ivory canvas + ink/Plus Jakarta defaults so consumers inherit the vibe.
+ */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg-canvas);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--t-body-size);
+  line-height: var(--t-body-lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Tabular-numeral helper — apply anywhere a number must align (fares, ETAs, counts) */
+.rido-tnum { font-feature-settings: var(--num-tabular); }
+
+/* The brand wordmark accent — the constant blue i/I */
+.rido-accent { color: var(--signal); }
+
+/* Eyebrow / caption convention */
+.rido-eyebrow {
+  font-family: var(--font-ui);
+  font-size: var(--t-eyebrow-size);
+  font-weight: var(--t-eyebrow-weight);
+  letter-spacing: var(--t-eyebrow-tracking);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+
+<helmet>
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/tokens/base.css">
+  <link rel="stylesheet" href="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/styles.css">
+  <script src="_ds/rido-design-system-96eb19fd-ff61-4400-ae29-5e2eab8cf483/_ds_bundle.js"></script>
+  <script src="https://unpkg.com/lucide"></script>
+  <style>a{color:var(--signal)}a:hover{color:var(--midnight)}</style>
+</helmet>
+
+<div style="background:var(--ivory);color:var(--ink);font-family:var(--font-ui);width:100%;overflow-x:hidden;min-height:100vh">
+
+  <!-- NAV -->
+  <nav style="position:sticky;top:0;z-index:50;background:var(--ivory);border-bottom:1px solid var(--mist)">
+    <div style="max-width:1120px;margin:0 auto;padding:0 32px;height:78px;display:flex;align-items:center;justify-content:space-between">
+      <a href="RIDO Rider.dc.html" style="font-family:var(--font-display);font-weight:800;font-size:26px;letter-spacing:-0.04em;color:var(--midnight);text-decoration:none">r<span style="color:var(--signal)">i</span>do</a>
+      <div style="display:flex;align-items:center;gap:30px">
+        <div style="display:flex;gap:26px">
+          <a href="RIDO Rider.dc.html" style="font-size:14px;font-weight:500;color:var(--ink);text-decoration:none">For riders</a>
+          <a href="RIDO Driver.dc.html" style="font-size:14px;font-weight:600;color:var(--midnight);text-decoration:none">For drivers</a>
+          <a href="RIDO About.dc.html" style="font-size:14px;font-weight:500;color:var(--ink);text-decoration:none">About</a>
+        </div>
+        <x-import component-from-global-scope="RIDODesignSystem_96eb19.Button" variant="primary" size="sm" hint-size="auto,40px">Drive with rido</x-import>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <header style="max-width:1120px;margin:0 auto;padding:64px 32px 56px">
+    <div style="margin-bottom:20px">
+      <x-import component-from-global-scope="RIDODesignSystem_96eb19.Badge" tone="accent" hint-size="auto,24px">$0 driver fees for the first 6 months</x-import>
+    </div>
+    <h1 style="font-family:var(--font-display);font-weight:800;font-size:54px;line-height:1.05;letter-spacing:-0.03em;color:var(--midnight);margin:0;max-width:780px">Keep up to <span style="color:var(--signal)">{{ advFmt }}</span> more of what you earn, every month.</h1>
+    <p style="font-size:18px;line-height:1.55;color:var(--slate);max-width:560px;margin:20px 0 0">Incumbents take a flat, opaque cut that runs 35–50%. Ours drops as you drive — 20%, then 12%, then just 8%.</p>
+    <div style="display:flex;gap:12px;margin-top:28px">
+      <x-import component-from-global-scope="RIDODesignSystem_96eb19.Button" variant="primary" size="lg" hint-size="auto,56px">Drive with rido</x-import>
+      <x-import component-from-global-scope="RIDODesignSystem_96eb19.Button" variant="secondary" size="lg" hint-size="auto,56px">See requirements</x-import>
+    </div>
+  </header>
+
+  <!-- ECONOMICS -->
+  <section style="background:var(--white);border-top:1px solid var(--mist);border-bottom:1px solid var(--mist);padding:76px 0">
+    <div style="max-width:1120px;margin:0 auto;padding:0 32px;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center">
+      <div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)">The driver economics</div>
+        <h2 style="font-family:var(--font-display);font-weight:700;font-size:34px;color:var(--midnight);letter-spacing:-0.02em;margin:10px 0 16px;line-height:1.1">Our commission falls as you drive more.</h2>
+        <p style="font-size:16px;line-height:1.6;color:var(--slate);max-width:450px;margin:0">20% on your first $1,000 of fares each month, 12% on the next $2,000, then just 8% above $3,000. No flat fee during the launch pilot.</p>
+      </div>
+
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:28px">
+        <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-bottom:20px">On {{ monthlyFaresFmt }} of fares this month</div>
+
+        <div style="margin-bottom:22px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+            <span style="font-weight:600;font-size:15px;color:var(--ink)">r<span style="color:var(--signal)">i</span>do</span>
+            <span style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--midnight);font-feature-settings:'tnum' 1">{{ ridoKeepFmt }} kept</span>
+          </div>
+          <div style="position:relative;height:32px;border-radius:999px;background:var(--ivory);border:1px solid var(--mist);overflow:hidden">
+            <div style="position:absolute;inset:0;width:{{ ridoBarWidth }};background:var(--signal);border-radius:999px;display:flex;align-items:center;padding-left:14px">
+              <span style="font-family:var(--font-display);font-weight:700;font-size:13px;color:var(--white);font-feature-settings:'tnum' 1">driver keeps {{ ridoPct }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+            <span style="font-weight:600;font-size:15px;color:var(--ink)">Other incumbents</span>
+            <span style="font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--slate);font-feature-settings:'tnum' 1">{{ incKeepFmt }} kept</span>
+          </div>
+          <div style="position:relative;height:32px;border-radius:999px;background:var(--ivory);border:1px solid var(--mist);overflow:hidden">
+            <div style="position:absolute;inset:0;width:{{ incBarWidth }};background:var(--midnight);border-radius:999px;display:flex;align-items:center;padding-left:14px">
+              <span style="font-family:var(--font-display);font-weight:700;font-size:13px;color:var(--white);font-feature-settings:'tnum' 1">driver keeps {{ incPct }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;margin-top:18px;padding-top:18px;border-top:1px solid var(--mist)">
+          <span style="display:flex;color:var(--signal)"><i data-lucide="trending-up" style="width:17px;height:17px"></i></span>
+          <span style="font-size:13.5px;color:var(--midnight)">That's <b>{{ advFmt }}</b> more in your pocket — every single month.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS (drivers) -->
+  <section style="max-width:1120px;margin:0 auto;padding:76px 32px">
+    <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)">How it works</div>
+    <h2 style="font-family:var(--font-display);font-weight:700;font-size:34px;color:var(--midnight);letter-spacing:-0.02em;margin:10px 0 38px">Drive on your terms.</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <span style="display:flex;width:46px;height:46px;border-radius:14px;background:var(--midnight-08);align-items:center;justify-content:center;color:var(--midnight)"><i data-lucide="power" style="width:22px;height:22px"></i></span>
+          <span style="font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--mist);font-feature-settings:'tnum' 1">01</span>
+        </div>
+        <h3 style="font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--ink);margin:0 0 8px">Go online when you want</h3>
+        <p style="font-size:14.5px;line-height:1.55;color:var(--slate);margin:0">Flip on, drive on your terms. No quotas, no forced hours, no penalties.</p>
+      </div>
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <span style="display:flex;width:46px;height:46px;border-radius:14px;background:var(--midnight-08);align-items:center;justify-content:center;color:var(--midnight)"><i data-lucide="hand-coins" style="width:22px;height:22px"></i></span>
+          <span style="font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--mist);font-feature-settings:'tnum' 1">02</span>
+        </div>
+        <h3 style="font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--ink);margin:0 0 8px">See your cut, every ride</h3>
+        <p style="font-size:14.5px;line-height:1.55;color:var(--slate);margin:0">Each card shows "you keep $X (Y%)." Commission drops as you drive more.</p>
+      </div>
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <span style="display:flex;width:46px;height:46px;border-radius:14px;background:var(--midnight-08);align-items:center;justify-content:center;color:var(--midnight)"><i data-lucide="trending-up" style="width:22px;height:22px"></i></span>
+          <span style="font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--mist);font-feature-settings:'tnum' 1">03</span>
+        </div>
+        <h3 style="font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--ink);margin:0 0 8px">Keep up to {{ advFmt }} more</h3>
+        <p style="font-size:14.5px;line-height:1.55;color:var(--slate);margin:0">A lower, fairer cut means more in your pocket at the end of every month.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- REQUIREMENTS -->
+  <section style="background:var(--white);border-top:1px solid var(--mist);border-bottom:1px solid var(--mist);padding:76px 0">
+    <div style="max-width:1120px;margin:0 auto;padding:0 32px">
+      <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)">What you need</div>
+      <h2 style="font-family:var(--font-display);font-weight:700;font-size:34px;color:var(--midnight);letter-spacing:-0.02em;margin:10px 0 38px">Requirements to drive.</h2>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:16px">
+        <div style="text-align:center">
+          <span style="display:inline-flex;width:44px;height:44px;border-radius:12px;background:var(--signal-08);align-items:center;justify-content:center;color:var(--signal);margin-bottom:12px"><i data-lucide="id-card" style="width:20px;height:20px"></i></span>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">21+ with a valid license</div>
+        </div>
+        <div style="text-align:center">
+          <span style="display:inline-flex;width:44px;height:44px;border-radius:12px;background:var(--signal-08);align-items:center;justify-content:center;color:var(--signal);margin-bottom:12px"><i data-lucide="car-front" style="width:20px;height:20px"></i></span>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">2010 or newer vehicle</div>
+        </div>
+        <div style="text-align:center">
+          <span style="display:inline-flex;width:44px;height:44px;border-radius:12px;background:var(--signal-08);align-items:center;justify-content:center;color:var(--signal);margin-bottom:12px"><i data-lucide="shield-check" style="width:20px;height:20px"></i></span>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">Valid insurance on file</div>
+        </div>
+        <div style="text-align:center">
+          <span style="display:inline-flex;width:44px;height:44px;border-radius:12px;background:var(--signal-08);align-items:center;justify-content:center;color:var(--signal);margin-bottom:12px"><i data-lucide="search-check" style="width:20px;height:20px"></i></span>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">Passed background check</div>
+        </div>
+        <div style="text-align:center">
+          <span style="display:inline-flex;width:44px;height:44px;border-radius:12px;background:var(--signal-08);align-items:center;justify-content:center;color:var(--signal);margin-bottom:12px"><i data-lucide="file-check" style="width:20px;height:20px"></i></span>
+          <div style="font-size:14px;font-weight:600;color:var(--ink)">Clean driving record</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section style="max-width:1120px;margin:0 auto;padding:76px 32px">
+    <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate)">From drivers</div>
+    <h2 style="font-family:var(--font-display);font-weight:700;font-size:34px;color:var(--midnight);letter-spacing:-0.02em;margin:10px 0 38px">What driving with rido feels like.</h2>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px">
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:14px">
+        <i data-lucide="quote" style="width:20px;height:20px;color:var(--signal)"></i>
+        <p style="font-size:15px;line-height:1.55;color:var(--ink);margin:0">"I finally see the math on every ride. No guessing what I'll take home."</p>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:auto">
+          <x-import component-from-global-scope="RIDODesignSystem_96eb19.Avatar" name="Marcus T." hint-size="36px,36px"></x-import>
+          <div>
+            <div style="font-size:13.5px;font-weight:600;color:var(--ink)">Marcus T.</div>
+            <div style="font-size:12.5px;color:var(--slate)">Pilot driver, San Diego</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:14px">
+        <i data-lucide="quote" style="width:20px;height:20px;color:var(--signal)"></i>
+        <p style="font-size:15px;line-height:1.55;color:var(--ink);margin:0">"Same hours, noticeably more in the bank at the end of the week."</p>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:auto">
+          <x-import component-from-global-scope="RIDODesignSystem_96eb19.Avatar" name="Priya S." hint-size="36px,36px"></x-import>
+          <div>
+            <div style="font-size:13.5px;font-weight:600;color:var(--ink)">Priya S.</div>
+            <div style="font-size:12.5px;color:var(--slate)">Pilot driver, UCSD area</div>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--white);border:1px solid var(--mist);border-radius:18px;padding:24px;display:flex;flex-direction:column;gap:14px">
+        <i data-lucide="quote" style="width:20px;height:20px;color:var(--signal)"></i>
+        <p style="font-size:15px;line-height:1.55;color:var(--ink);margin:0">"No forced hours, no penalties for logging off. It respects my time."</p>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:auto">
+          <x-import component-from-global-scope="RIDODesignSystem_96eb19.Avatar" name="Dana R." hint-size="36px,36px"></x-import>
+          <div>
+            <div style="font-size:13.5px;font-weight:600;color:var(--ink)">Dana R.</div>
+            <div style="font-size:12.5px;color:var(--slate)">Pilot driver, San Diego</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p style="font-size:12px;color:var(--slate);margin-top:16px">Illustrative quotes from pilot conversations; not verbatim reviews.</p>
+  </section>
+
+  <!-- CTA -->
+  <section style="background:var(--midnight);padding:72px 0">
+    <div style="max-width:640px;margin:0 auto;padding:0 32px;text-align:center">
+      <h2 style="font-family:var(--font-display);font-weight:700;font-size:30px;line-height:1.25;color:var(--white);letter-spacing:-0.01em;margin:0">$0 flat fees for your first 6 months. Commission only.</h2>
+      <div style="margin-top:28px">
+        <x-import component-from-global-scope="RIDODesignSystem_96eb19.Button" variant="accent" size="lg" hint-size="auto,56px">Drive with rido</x-import>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer style="background:var(--white);border-top:1px solid var(--mist);padding:48px 0 36px">
+    <div style="max-width:1120px;margin:0 auto;padding:0 32px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:32px">
+      <div>
+        <span style="font-family:var(--font-display);font-weight:800;font-size:26px;letter-spacing:-0.04em;color:var(--midnight)">r<span style="color:var(--signal)">i</span>do</span>
+        <p style="font-size:13.5px;color:var(--slate);margin-top:12px;max-width:240px">The fair way to move. Cheaper for you, fair for your driver.</p>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-bottom:14px">Rider</div>
+        <a href="RIDO Rider.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Get a rido</a>
+        <a href="RIDO Rider.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Cities</a>
+        <a href="RIDO Rider.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Safety</a>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-bottom:14px">Driver</div>
+        <a href="RIDO Driver.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Drive with rido</a>
+        <a href="RIDO Driver.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Earnings</a>
+        <a href="RIDO Driver.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Requirements</a>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--slate);margin-bottom:14px">Company</div>
+        <a href="RIDO About.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Our promise</a>
+        <a href="RIDO About.dc.html" style="display:block;font-size:14px;color:var(--ink);text-decoration:none;margin-bottom:10px">Contact</a>
+      </div>
+    </div>
+    <div style="max-width:1120px;margin:36px auto 0;padding:20px 32px 0;border-top:1px solid var(--mist);display:flex;justify-content:space-between">
+      <span style="font-size:12.5px;color:var(--slate)">© 2026 RIDO. San Diego, CA.</span>
+      <span style="font-size:12.5px;color:var(--slate)">Privacy · Terms</span>
+    </div>
+  </footer>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;monthlyFares&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5000,&quot;min&quot;:1000,&quot;max&quot;:12000,&quot;step&quot;:250,&quot;tsType&quot;:&quot;number&quot;},&quot;incumbentTakePct&quot;:{&quot;editor&quot;:&quot;float&quot;,&quot;default&quot;:36.8,&quot;min&quot;:20,&quot;max&quot;:55,&quot;step&quot;:0.2,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  componentDidMount() {
+    const run = () => { if (window.lucide) window.lucide.createIcons(); };
+    run();
+    [120, 400, 900, 1600].forEach((t) => setTimeout(run, t));
+  }
+  renderVals() {
+    const f = this.props.monthlyFares ?? 5000;
+    const incTake = this.props.incumbentTakePct ?? 36.8;
+
+    let take = Math.min(f, 1000) * 0.20;
+    if (f > 1000) take += Math.min(f - 1000, 2000) * 0.12;
+    if (f > 3000) take += (f - 3000) * 0.08;
+
+    const ridoKeep = Math.round(f - take);
+    const incKeep = Math.round(f * (1 - incTake / 100));
+    const adv = Math.max(0, ridoKeep - incKeep);
+    const fmt = (n) => '$' + Math.round(n).toLocaleString('en-US');
+    const ridoPct = Math.round((ridoKeep / f) * 100);
+    const incPct = Math.round((incKeep / f) * 100);
+
+    return {
+      monthlyFaresFmt: fmt(f),
+      ridoKeepFmt: fmt(ridoKeep),
+      incKeepFmt: fmt(incKeep),
+      advFmt: fmt(adv),
+      ridoPct,
+      incPct,
+      ridoBarWidth: ridoPct + '%',
+      incBarWidth: incPct + '%',
+    };
+  }
+}
+</script>
+</body>
+</html>

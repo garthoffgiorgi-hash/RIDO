@@ -1,46 +1,84 @@
-# RIDO — Repo Reconciliation & Build Roadmap
+# RIDO — Build Roadmap
 
-*What's actually in the repo vs. what the docs describe, and the order to close the gap. Generated after reviewing the uploaded repo.*
+*The one doc that describes **current repo state**. Everything else here describes intent; this
+describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
+same commit that proves it wrong.***
+
+**Last verified: 2026-08-07** (against `main` @ `7c98c0d`)
 
 ## TL;DR
-The repo is a **static marketing site** (two HTML pages, plain CSS/JS, no build). The architecture docs describe a **Next.js + Supabase app that doesn't exist yet**. The repo's brand is the **old direction** (different blues, Poppins/Inter, a car-with-wheels logo) and predates the design system. So this isn't "the code diverged from the plan" — it's "almost nothing is built, and the one thing that is (marketing) needs re-skinning."
 
-## What's actually in the repo
-- `index.html` + `about.html` — marketing pages (hero, content sections, fictional founders).
-- `styles.css` — plain CSS, custom properties. Old palette: `#2A2EA0` / `#4169E1` / `#FAF7F0`; Poppins + Inter.
-- `script.js` — vanilla JS (mobile menu, language dropdown).
-- `vercel.json` — static hosting config (compatible with the target).
-- `.github/workflows/node.js.yml` — Node CI; currently **fails** (`npm test` is a stub that exits 1).
-- `package.json` / `package-lock.json` — stub, **no real dependencies**.
+The **scaffolding and context system are built and enforced**. The **product is not.** There is a
+working Next.js app with the brand wired in and five placeholder routes; there is no backend of
+any kind — no database, no auth, no payments, no maps, and no implemented pricing math.
 
-## The gap
-| Area | Repo today | Target (docs) | Action |
-|---|---|---|---|
-| Framework | static HTML | Next.js + TS | build |
-| Styling | plain CSS | Tailwind + tokens | build |
-| Backend | none | Supabase (Postgres, RLS, Edge Fns) | build |
-| Schema | none | drivers/subscriptions/rides/driver_monthly_stats/commission_tiers | build |
-| Pricing logic | none | graduated commission + pilot | build |
-| Payments/maps | none | Stripe + Mapbox | build |
-| App | marketing only | rider + driver flows | build |
-| Brand (palette/type/logo) | old (`#2A2EA0`, Poppins, car logo) | Midnight/Signal, Sora/Jakarta, RIDO/rido wordmark | re-skin or rebuild |
-| Hosting | Vercel (static) | Vercel | keep |
+## What exists (verified, not assumed)
 
-## Specific fixes
-1. **CI fails on every push** — `npm test` stub exits 1. Remove the workflow or replace with a real lint/test once there's a build.
-2. **Fictional founders** in `about.html` (Ava Mercer / Diego Romano / Priya Anand) — replace with real content or drop the section.
-3. **Old logo is a car with wheels** — the exact cliché the design system rejects. Replace with the RIDO/rido wordmark.
-4. **Confirm this is the canonical repo** — it's on a Claude-generated branch (`claude/nice-franklin-8eychm`), not obviously `main`.
+| Area | State |
+|---|---|
+| Repo structure | Scoped `CLAUDE.md` per domain, ADRs, canonical-source map (`docs/README.md`) |
+| Drift guard | `scripts/check-context.mjs` — reference resolution, size budgets, ADR citations, pricing-literal leakage |
+| CI | `.github/workflows/ci.yml` — drift check + `packages/pricing` under **both** Node and Deno. Green. |
+| `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
+| Routes | `/`, `/drivers`, `/about`, `/login`, `/request` — **placeholders**, not real UI |
+| `packages/pricing` | Typed stubs and a verified cross-runtime import path. **Every function throws `not implemented`. Zero tests.** |
+| Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
+| Supabase | **Directories and one seed file only.** No project, no migrations, no RLS, no functions. |
 
-## Build roadmap (suggested order)
-**Phase 0 — decide (blocks everything):** ✅ stack locked (Next.js + TS + Tailwind + Supabase + Stripe + Mapbox); ✅ landing rebuilt fresh in Claude Design on the new brand; ✅ commission is **bracketed per-ride** (no reconciliation job). **Still open:** the commercial insurance quote (gates the economics).
+## What does not exist
 
-**Phase 1 — foundation:** scaffold Next.js + TS + Tailwind (map brand tokens into the Tailwind config); set up Supabase project; wire auth; add the 5 tables as migrations; seed `commission_tiers`.
+Supabase project · migrations · RLS policies · `complete-ride` Edge Function ·
+`bump_monthly_stats` trigger · any implemented commission math · any test in `packages/pricing` ·
+Stripe (subscriptions or Connect) · Mapbox · auth wiring (`src/lib/supabase/*.ts` are stubs) ·
+rider booking flow · driver app · compliance enforcement.
 
-**Phase 2 — money spine:** `packages/pricing/` pure functions (graduated commission, pilot $0 fee) with unit tests at every tier boundary; `completeRide` Edge Function + `bump_monthly_stats` trigger; Stripe (subscription for flat fee, Connect for payouts). **Also:** once implemented, derive the published marketing percentage (`docs/business/monetization.md`) from `packages/pricing` directly — retire the hand-computed interim figure.
+## Build order
 
-**Phase 3 — surfaces:** marketing landing on the new brand (Claude Design → handoff); rider request flow; driver view (online/offline, incoming request with "you keep $X", MTD tier progress). Mapbox integration.
+**Phase 0 — decide.** ✅ Stack locked. ✅ Commission bracketed per-ride (ADR-0002). ✅ Repo
+canonical (ADR-0004). ✅ Monorepo-shaped, no monorepo tooling (ADR-0005). ✅ Edge Function import
+path verified. **Open:** the commercial insurance quote — gates the economics, needs a broker.
 
-**Phase 4 — compliance gates:** driver activation gated on background-check + vehicle-inspection status; CPUC fee + airport surcharge handling.
+**Phase 1 — foundation.** ✅ Next.js scaffolded with brand tokens. ⬜ Marketing pages + login
+(*in progress*). ⬜ **Create the Supabase project — requires founder credentials; this is the
+single gate between a demo and a working prototype.** ⬜ Five tables as migrations. ⬜ Seed
+`commission_tiers` (SQL already written). ⬜ Auth wiring. ⬜ Generate `database.types.ts`.
 
-> The old static site can stay live as a placeholder landing while Phase 1–2 happen behind it — just re-skin it to the new brand first so it's not advertising the old identity.
+**Phase 2 — money spine.** ⬜ Implement `packages/pricing` with boundary tests at every tier edge
+(`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`, `$3,000.00`, `$3,000.01`), spanning
+rides, monotonicity, and exact `commission + payout === fare`. ⬜ `complete-ride` Edge Function +
+`bump_monthly_stats` trigger. ⬜ Stripe. ⬜ Retire the hand-computed marketing percentage in
+`business/monetization.md` in favour of one derived from `packages/pricing`.
+
+**Phase 3 — surfaces.** ⬜ Rider request flow (map-first, bottom sheet, fare up front). ⬜ Driver
+view (online/offline, incoming card with "you keep $X (Y%)", MTD tier progress). ⬜ Mapbox.
+
+**Phase 4 — compliance gates.** ⬜ Driver activation gated on background check + vehicle
+inspection, enforced in the database (constraint + RLS), not just the app. ⬜ CPUC fee and
+airport surcharges as first-class line items.
+
+## Two definitions of "prototype"
+
+- **Clickable demo (mock data):** needs Phase 1's UI work only. Rider and driver screens can be
+  built against a single mock-data module in `apps/web/src/lib/` without any backend.
+- **Actually works end-to-end:** needs Phases 1 and 2 complete. Phase 2 is the part not to rush —
+  `packages/pricing` is the most important code in the repo, and a wrong number there lands
+  permanently in the accounting record via the ride snapshot.
+
+## Blocked on people, not code
+
+| # | Question | Owner |
+|---|---|---|
+| 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride? | Broker |
+| 2 | Prop 22 earnings floor × "drivers set fares" | CA attorney |
+| 3 | Does RIDO absorb Stripe's ~2.9% + $0.30, or pass it to drivers? | Founder |
+| 4 | Supabase project creation | Founder |
+
+## Working conventions
+
+- Two parallel tracks: backend (this repo's core) and frontend (marketing/app UI). Both merge to
+  `main` via small PRs — keep branches short-lived; `docs/roadmap.md` is the file both touch.
+- Frontend work that needs a backend capability leaves `// TODO(backend):` at the call site **and**
+  a bullet here. That's the handoff mechanism — `grep -rn "TODO(backend)" apps/web/` before
+  starting Phase 2.
+- Before Claude Design mocks a new surface, re-sync its repo connection. The 2026-08-07 bundle
+  was generated from a pre-fix snapshot and carried a stale figure into the Rider page.

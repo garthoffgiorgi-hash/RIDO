@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+/*
+ * Brand tokens — mapped once, here. Tailwind v4 is CSS-first (no tailwind.config.ts); every
+ * value below becomes a utility automatically (--color-midnight -> bg-midnight, text-midnight,
+ * border-midnight, ...). Source of truth for these values: brand/design-system.md section 1.
+ * Never write one of these hex values directly in a component — use the utility class.
+ */
+@theme {
+  --color-midnight: #0b2a5b;
+  --color-signal: #2a5bff;
+  --color-ivory: #f7f5ef;
+  --color-white: #ffffff;
+  --color-mist: #e7e3da;
+  --color-ink: #14171f;
+  --color-slate: #5b5f69;
+
+  --font-sora: var(--font-sora-loader), sans-serif;
+  --font-jakarta: var(--font-jakarta-loader), sans-serif;
+
+  --radius-input: 12px;
+  --radius-card: 18px;
+  --radius-pill: 999px;
+}
+
+body {
+  background-color: var(--color-ivory);
+  color: var(--color-ink);
+}
+
+/* Tabular numerals on every fare, ETA, distance, count, percentage — non-negotiable for a money
+   app (apps/web/CLAUDE.md). Use className="tabular", never hand-roll font-feature-settings. */
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

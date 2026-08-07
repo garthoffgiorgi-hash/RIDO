@@ -2,9 +2,14 @@
 
 Next.js (App Router) + TypeScript + Tailwind. On Vercel, **Root Directory is `apps/web`**.
 
+TypeScript is pinned to **6.0.3**, not the npm-latest 7.x. TS 7 went native in July 2026 and
+shipped with no stable programmatic API — it breaks `typescript-eslint` and most type-checking
+tooling until 7.1 lands. Don't bump past 6.x until that ships and the ecosystem catches up.
+
 ## Brand
 
-Tokens come from `brand/design-system.md`, mapped **once** into `tailwind.config.ts`.
+Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals.css`'s
+`@theme` block. Tailwind v4 is CSS-first — there is no `tailwind.config.ts`.
 **Never write a hex value in a component.**
 
 | Token | Hex | Role |
@@ -43,6 +48,8 @@ Tokens come from `brand/design-system.md`, mapped **once** into `tailwind.config
 ## Rules
 
 - Server Components by default. `"use client"` needs a reason you could state out loud.
+- `params` and `searchParams` in page/layout components are **Promises**, not plain objects
+  (`const { id } = await params`). Easy to get wrong copying older Next.js examples.
 - The service-role client is importable **only** from `src/lib/supabase/server.ts`, which carries
   `import "server-only"`. It must never be reachable from a client component.
 - Components receive **cents**. Money is formatted at the very edge with `Intl.NumberFormat`.

@@ -1,0 +1,9 @@
+/* RIDO — Global stylesheet entry point.
+ * Consumers link THIS one file. Keep it a list of @import lines only — no rules inline.
+ * Order: fonts first, then tokens (colors, type, spacing), then any base resets.
+ */
+@import url('tokens/fonts.css');
+@import url('tokens/colors.css');
+@import url('tokens/typography.css');
+@import url('tokens/spacing.css');
+@import url('tokens/base.css');

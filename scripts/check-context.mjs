@@ -11,8 +11,13 @@
  *   2. No bare `@path` imports in CLAUDE.md — those inline into EVERY session at launch.
  *   3. Every backticked file reference in markdown resolves on disk.
  *   4. Every `ADR-NNNN` mention has a matching file in docs/decisions/.
- *   5. Every `.dc.html` export has a sibling `.md` handoff note.
+ *   5. Every `.dc.html` export has a handoff note (sibling file, or one per bundle folder).
  *   6. Pricing constants appear only where they're allowed to.
+ *
+ * brand/exports/<bundle>/** is vendor content — a Design handoff bundle, not repo-authored.
+ * It keeps its own internal cross-references (from Design's own snapshot, not this repo's
+ * current paths) and isn't something we edit. Exempt from rules 1-4 and 6, same treatment as
+ * not reading a .dc.html in full: reference material, not a thing to lint.
  */
 
 import { readdirSync, readFileSync, statSync, existsSync } from "node:fs";
@@ -49,8 +54,10 @@ function walk(dir, out = []) {
 const stripFences = (s) => s.replace(/```[\s\S]*?```/g, (m) => m.replace(/[^\n]/g, " "));
 
 const files = walk(ROOT);
-const markdown = files.filter((f) => f.endsWith(".md"));
 const rel = (f) => relative(ROOT, f);
+/** brand/exports/<bundle>/** — a Design handoff bundle. Vendor content; see file header. */
+const isVendoredBundleContent = (f) => /^brand\/exports\/[^/]+\//.test(rel(f));
+const markdown = files.filter((f) => f.endsWith(".md") && !isVendoredBundleContent(f));
 
 /** Every markdown basename in the repo, for resolving sibling-style `foo.md` citations. */
 const knownDocNames = new Set(markdown.map((f) => basename(f)));
@@ -108,9 +115,14 @@ for (const file of markdown) {
 
 // ---------------------------------------------------------------------- 5
 for (const file of files.filter((f) => f.endsWith(".dc.html"))) {
-  if (!existsSync(file.replace(/\.dc\.html$/, ".md"))) {
-    fail(rel(file), "export has no sibling .md handoff note — write one before using it");
-  }
+  if (existsSync(file.replace(/\.dc\.html$/, ".md"))) continue;
+
+  // A bundle export (brand/exports/<bundle>/*.dc.html) is handed off with ONE note per bundle,
+  // not one per file: brand/exports/<bundle>.md, sibling to the bundle folder itself.
+  const bundleMatch = rel(file).match(/^(brand\/exports\/[^/]+)\//);
+  if (bundleMatch && existsSync(resolve(ROOT, `${bundleMatch[1]}.md`))) continue;
+
+  fail(rel(file), "export has no handoff note — write one before using it");
 }
 
 // ---------------------------------------------------------------------- 6
@@ -127,6 +139,7 @@ const PRICING_ALLOWED = [
   /^packages\/pricing\/.*\.test\.ts$/,
   /^scripts\/check-context\.mjs$/,
   /^CLAUDE\.md$/,
+  /^brand\/exports\//,
 ];
 const codeFiles = files.filter((f) => /\.(ts|tsx|js|jsx|sql)$/.test(f));
 for (const file of codeFiles) {

@@ -1,0 +1,7 @@
+/* RIDO — Webfonts
+ * Display/wordmark: Sora (geometric, confident, modern)
+ * Body/UI: Plus Jakarta Sans (legible at small sizes)
+ * Both are freely-licensable Google Fonts — the brand's intended faces (see brand-guide §6).
+ * Tabular numerals are enabled per-use via font-feature-settings: "tnum" 1.
+ */
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap');

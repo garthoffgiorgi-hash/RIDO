@@ -1,0 +1,43 @@
+/* RIDO — Spacing, shape & elevation tokens
+ * Spacing scale: 4 8 12 16 20 24 32 40. Generous, rounded — core to the sleek-but-warm feel.
+ * Elevation: prefer the 1px Mist border + tonal lift over shadow. Flat over glossy.
+ */
+:root {
+  /* ---- Spacing scale ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* ---- Corner radius ---- */
+  --radius-input:  12px; /* inputs, buttons */
+  --radius-button: 12px;
+  --radius-card:   18px; /* cards 16–18 */
+  --radius-card-sm:16px;
+  --radius-sheet:  18px; /* bottom sheets / modals (top corners) */
+  --radius-pill:   999px; /* pills / chips 20px+ */
+
+  /* ---- Borders ---- */
+  --border-width: 1px;
+  --border-hairline: 1px solid var(--mist);
+
+  /* ---- Elevation (used sparingly — only for active sheets / floating surfaces) ---- */
+  --shadow-none: none;
+  --shadow-sheet: 0 -8px 30px rgba(11, 42, 91, 0.10);   /* bottom sheet lifting over map */
+  --shadow-float: 0 6px 24px rgba(11, 42, 91, 0.10);     /* floating card / popover */
+  --shadow-press: 0 2px 8px rgba(11, 42, 91, 0.08);
+
+  /* ---- Motion ---- */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --ease-sheet:    cubic-bezier(0.32, 0.72, 0, 1); /* @kind other */
+  --dur-fast:   150ms; /* @kind other */
+  --dur-base:   200ms; /* @kind other */
+  --dur-sheet:  320ms; /* @kind other */
+
+  /* ---- Tap target ---- */
+  --tap-min: 44px;
+}

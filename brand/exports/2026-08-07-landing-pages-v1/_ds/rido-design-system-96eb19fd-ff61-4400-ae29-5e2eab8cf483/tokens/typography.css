@@ -1,0 +1,64 @@
+/* RIDO — Typography tokens
+ * Display/wordmark: Sora. Body/UI: Plus Jakarta Sans.
+ * Tabular numerals (--num-tabular) on every fare, ETA, distance, count, percentage.
+ */
+:root {
+  /* ---- Families ---- */
+  --font-display: 'Sora', system-ui, sans-serif;            /* headlines, wordmark, big numbers */
+  --font-ui:      'Plus Jakarta Sans', system-ui, sans-serif; /* every label, button, paragraph */
+  /* font-feature-settings value for tabular numerals */
+  --num-tabular:  "tnum" 1; /* @kind font */
+
+  /* ---- Weights ---- */
+  --w-regular: 400;  /* @kind font */
+  --w-medium:  500;  /* @kind font */
+  --w-semibold:600;  /* @kind font */
+  --w-bold:    700;  /* @kind font */
+  --w-extra:   800;  /* @kind font */
+
+  /* ---- Type scale (size / line-height / weight / face) ---- */
+  /* Display XL — hero */
+  --t-display-xl-size: 72px;
+  --t-display-xl-lh:   1.0;            /* @kind font */
+  --t-display-xl-weight: var(--w-extra); /* @kind font */
+
+  /* Display */
+  --t-display-size: 36px;
+  --t-display-lh:   1.1;              /* @kind font */
+  --t-display-weight: var(--w-bold);  /* @kind font */
+
+  /* Title */
+  --t-title-size: 22px;
+  --t-title-lh:   1.2;               /* @kind font */
+  --t-title-weight: var(--w-bold);   /* @kind font */
+
+  /* Heading */
+  --t-heading-size: 18px;
+  --t-heading-lh:   1.3;                  /* @kind font */
+  --t-heading-weight: var(--w-semibold);  /* @kind font */
+
+  /* Body */
+  --t-body-size: 16px;
+  --t-body-lh:   1.55;                 /* @kind font */
+  --t-body-weight: var(--w-regular);   /* @kind font */
+
+  /* Label / UI */
+  --t-label-size: 13px;
+  --t-label-lh:   1.4;                 /* @kind font */
+  --t-label-weight: var(--w-medium);   /* @kind font */
+
+  /* Caption / eyebrow — UPPERCASE, tracked */
+  --t-eyebrow-size: 11px;
+  --t-eyebrow-lh:   1;                    /* @kind font */
+  --t-eyebrow-weight: var(--w-semibold);  /* @kind font */
+  --t-eyebrow-tracking: 0.14em;           /* @kind font */
+
+  /* Fare / ETA numeral — Sora, tabular */
+  --t-numeral-size: 24px;
+  --t-numeral-lh:   1;                  /* @kind font */
+  --t-numeral-weight: var(--w-bold);    /* @kind font */
+
+  /* ---- Display letter-spacing (Sora reads tight at large sizes) ---- */
+  --track-display: -0.03em;   /* @kind font */
+  --track-wordmark: -0.04em;  /* @kind font */
+}

@@ -44,3 +44,13 @@ The repo is a **static marketing site** (two HTML pages, plain CSS/JS, no build)
 **Phase 4 — compliance gates:** driver activation gated on background-check + vehicle-inspection status; CPUC fee + airport surcharge handling.
 
 > The old static site can stay live as a placeholder landing while Phase 1–2 happen behind it — just re-skin it to the new brand first so it's not advertising the old identity.
+
+## Discovered while building the marketing pages + `/login` (2026-08-07)
+- **Phase 3 progress:** `/`, `/drivers`, `/about` are built in `apps/web` on the real brand (no
+  longer placeholders) — see `brand/exports/2026-08-07-landing-pages-v1.md` for the handoff this
+  was built from. `/request` (rider flow) is still a placeholder — out of scope for that change.
+- **Auth wiring needed (Phase 1):** `/login` (`apps/web/src/app/login/page.tsx`) is real UI —
+  password and magic-link modes, loading/error/disabled states — but has no working submission.
+  It calls `createBrowserClient()` from `apps/web/src/lib/supabase/client.ts`, which still
+  throws. Needs
+  `supabase.auth.signInWithPassword` / `signInWithOtp` once that client is implemented.

@@ -41,6 +41,13 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - `src/components/domain/` — RIDO-specific: `RideCard`, `TierProgress`, `DriverStatusToggle`.
 - `src/lib/supabase/` (`client.ts` browser, `server.ts` server-only), `src/lib/stripe/`,
   `src/lib/maps/`.
+- `src/proxy.ts` — refreshes the Supabase session cookie on every request. Named `proxy.ts` /
+  `proxy()`, not `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on
+  nearly every route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**,
+  by design — a missing Supabase config fails loud, not silently.
+- `.env.local` (gitignored) holds the three Supabase values — copy `.env.example` and fill in
+  real ones from Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is server-only, never
+  `NEXT_PUBLIC_`, never pasted anywhere it could be logged or committed.
 - **There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as
   `@rido/pricing`. If you're reaching for arithmetic on a fare here, you're in the wrong file.
 - `src/types/database.types.ts` is generated. Regenerate after every migration; never hand-edit.

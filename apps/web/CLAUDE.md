@@ -48,6 +48,9 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - `.env.local` (gitignored) holds the three Supabase values — copy `.env.example` and fill in
   real ones from Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is server-only, never
   `NEXT_PUBLIC_`, never pasted anywhere it could be logged or committed.
+- Auth routes: `/login` (sign-in only), `/signup` (the only place accounts are created),
+  `/auth/confirm` (exchanges an email `token_hash` for a session — **every** email-link flow
+  needs it), `/auth/signout` (POST only), `/account` (first auth-gated route).
 - **There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as
   `@rido/pricing`. If you're reaching for arithmetic on a fare here, you're in the wrong file.
 - `src/types/database.types.ts` is generated. Regenerate after every migration; never hand-edit.
@@ -70,3 +73,9 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
   is interim until Phase 2 computes it from `@rido/pricing` directly.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").
+- **Never surface a raw Supabase auth error to a user.** Pass it through
+  `authErrorMessage()` in `src/lib/auth-errors.ts` — raw strings are off-voice and can reveal
+  whether an account exists. Add new cases there, not inline in a component.
+- **Login never creates accounts** (`shouldCreateUser: false`). Account creation is an explicit
+  act at `/signup`, which verifies the email before the account is usable — drivers are
+  compliance-gated, so an account existing should always be someone's deliberate decision.

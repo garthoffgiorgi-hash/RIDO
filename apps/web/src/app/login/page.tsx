@@ -1,25 +1,46 @@
 "use client";
 
 // Shared rider/driver login. Not placed in (rider)/ or (driver)/ since the same flow serves
-// both — revisit if that stops being true. Real Supabase Auth: password sign-in redirects home,
-// magic link shows a "check your email" state. Post-login destination is "/" for both
-// roles for now — split rider/driver once there's a way to tell them apart (a `role` on the
-// driver row, most likely) rather than guessing here.
+// both — revisit if that stops being true. Post-login destination is /account for both roles
+// for now — split rider/driver once there's a way to tell them apart (a `role` on the driver
+// row, most likely) rather than guessing here.
+//
+// Sign-in only: shouldCreateUser is false, so an unknown email gets an error, not a silent new
+// account. Creating one is an explicit act at /signup.
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState, type FormEvent } from "react";
 import { Loader2, MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Wordmark } from "@/components/domain/Wordmark";
 import { createBrowserClient } from "@/lib/supabase/client";
+import { authErrorMessage } from "@/lib/auth-errors";
 
 type Mode = "password" | "magic-link";
 
+const LINK_ERRORS: Record<string, string> = {
+  link_invalid: "That link isn't valid. Request a new one below.",
+  link_expired: "That link expired. Request a new one below.",
+};
+
 export default function LoginPage() {
+  return (
+    // useSearchParams needs a Suspense boundary to avoid opting the whole route into
+    // client-side rendering.
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const linkError = LINK_ERRORS[searchParams.get("error") ?? ""] ?? null;
+
   const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,21 +58,25 @@ export default function LoginPage() {
     if (mode === "password") {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
       if (authError) {
-        setError(authError.message);
+        setError(authErrorMessage(authError.message));
         setLoading(false);
         return;
       }
-      router.push("/");
+      router.push("/account");
       router.refresh();
       return;
     }
 
     const { error: authError } = await supabase.auth.signInWithOtp({
       email,
-      options: { shouldCreateUser: true },
+      options: {
+        // Sign-in only — an unknown email errors instead of quietly creating an account.
+        shouldCreateUser: false,
+        emailRedirectTo: `${window.location.origin}/auth/confirm?next=/account`,
+      },
     });
     if (authError) {
-      setError(authError.message);
+      setError(authErrorMessage(authError.message));
       setLoading(false);
       return;
     }
@@ -135,9 +160,9 @@ export default function LoginPage() {
                 />
               ) : null}
 
-              {error ? (
+              {error ?? linkError ? (
                 <p role="alert" className="text-[13px] text-danger">
-                  {error}
+                  {error ?? linkError}
                 </p>
               ) : null}
 
@@ -159,12 +184,8 @@ export default function LoginPage() {
 
         <p className="mt-6 text-center text-sm text-slate">
           New to rido?{" "}
-          <Link href="/request" className="font-semibold text-signal no-underline hover:text-midnight">
-            Get a rido
-          </Link>{" "}
-          or{" "}
-          <Link href="/drivers" className="font-semibold text-signal no-underline hover:text-midnight">
-            drive with rido
+          <Link href="/signup" className="font-semibold text-signal no-underline hover:text-midnight">
+            Create an account
           </Link>
           .
         </p>

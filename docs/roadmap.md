@@ -44,12 +44,13 @@ canonical (ADR-0004). ✅ Monorepo-shaped, no monorepo tooling (ADR-0005). ✅ E
 path verified. **Open:** the commercial insurance quote — gates the economics, needs a broker.
 
 **Phase 1 — foundation.** ✅ Next.js scaffolded with brand tokens. ✅ Marketing pages + login UI.
-⬜ **Create the Supabase project — requires founder credentials; this is the single gate between
-a demo and a working prototype.** ⬜ Five tables as migrations. ⬜ Seed `commission_tiers` (SQL
-already written). ⬜ **Auth wiring** — implement `createBrowserClient()` in
-`apps/web/src/lib/supabase/client.ts` (currently throws); `/login` then needs
-`signInWithPassword` / `signInWithOtp` hooked to its existing submit handler. ⬜ Generate
-`database.types.ts`.
+✅ Supabase project created. ✅ **Auth wired** — real Supabase clients, `proxy.ts` session
+refresh, `/signup` (explicit account creation + email verification), `/login` (sign-in only),
+`/auth/confirm`, `/auth/signout`, `/account`. ⬜ Five tables as migrations. ⬜ Seed
+`commission_tiers` (SQL already written). ⬜ Generate `database.types.ts` (currently an empty
+`interface Database {}`, so the Supabase clients' generics are decorative until it's real).
+⬜ Link `auth.users` to a `drivers`/riders row — nothing distinguishes a rider from a driver
+yet, which is why every post-login redirect currently goes to `/account`.
 
 **Phase 2 — money spine.** ⬜ Implement `packages/pricing` with boundary tests at every tier edge
 (`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`, `$3,000.00`, `$3,000.01`), spanning

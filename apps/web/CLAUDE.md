@@ -51,6 +51,17 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - Auth routes: `/login` (sign-in only), `/signup` (the only place accounts are created),
   `/auth/confirm` (exchanges an email `token_hash` for a session — **every** email-link flow
   needs it), `/auth/signout` (POST only), `/account` (first auth-gated route).
+- **Supabase dashboard config, not code — easy to forget on a fresh project.** The default
+  "Confirm signup" and "Magic Link" email templates point at Supabase's own hosted verify
+  endpoint, not `/auth/confirm`, so out of the box the app's confirm route never receives a
+  token and every email link silently does nothing. Under Authentication → Email Templates,
+  rebuild both links as `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup` (magic link:
+  `type=magiclink`) — `{{ .RedirectTo }}` already carries the `emailRedirectTo` the app sent, so
+  this works in every environment without touching Site URL. Confirm signup must also show
+  `{{ .Token }}` in the body — `/signup`'s code-entry step verifies against the raw OTP, not the
+  hash. Separately, add each environment's origin to Authentication → URL Configuration →
+  Redirect URLs (e.g. `http://localhost:4000/**` for local dev) — Supabase drops
+  `emailRedirectTo` if it isn't allowlisted, even though the app never sees an error for it.
 - **There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as
   `@rido/pricing`. If you're reaching for arithmetic on a fare here, you're in the wrong file.
 - `src/types/database.types.ts` is generated. Regenerate after every migration; never hand-edit.

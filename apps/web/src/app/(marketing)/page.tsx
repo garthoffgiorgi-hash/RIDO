@@ -46,10 +46,10 @@ export default function RiderLandingPage() {
             half of every fare — we built the opposite.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Button href="/request" size="lg">
+            <Button href="/login" size="lg">
               Get a rido
             </Button>
-            <Button href="/login" variant="secondary" size="lg">
+            <Button href="/drivers" variant="secondary" size="lg">
               Drive with rido
             </Button>
           </div>
@@ -81,7 +81,7 @@ export default function RiderLandingPage() {
               <span className="text-[13px] font-semibold text-ink">Your destination</span>
             </div>
             <div className="mt-4">
-              <Button href="/request" fullWidth size="lg">
+              <Button href="/login" fullWidth size="lg">
                 Get a rido
               </Button>
             </div>

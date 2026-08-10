@@ -13,11 +13,12 @@ const LINKS = [
 /** Shared sticky nav for the three marketing pages — one active-link highlight per route. */
 export function MarketingNav() {
   const pathname = usePathname();
-  // The driver page's CTA points at sign-in (no driver application flow exists yet); every
-  // other marketing page CTAs into the rider request flow.
+  // On the driver page the CTA is bottom-of-funnel, so it goes to account creation — /login
+  // can't create one. Everywhere else it sends riders to sign in; the rider request flow isn't
+  // built yet, and an unbuilt placeholder is a worse destination than the login form.
   const isDriverPage = pathname === "/drivers";
   const ctaLabel = isDriverPage ? "Drive with rido" : "Get a rido";
-  const ctaHref = isDriverPage ? "/login" : "/request";
+  const ctaHref = isDriverPage ? "/signup" : "/login";
 
   return (
     <nav className="sticky top-0 z-50 border-b border-mist bg-ivory">

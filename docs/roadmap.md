@@ -45,8 +45,11 @@ path verified. **Open:** the commercial insurance quote — gates the economics,
 
 **Phase 1 — foundation.** ✅ Next.js scaffolded with brand tokens. ✅ Marketing pages + login UI.
 ✅ Supabase project created. ✅ **Auth wired** — real Supabase clients, `proxy.ts` session
-refresh, `/signup` (explicit account creation + email verification), `/login` (sign-in only),
-`/auth/confirm`, `/auth/signout`, `/account`. ⬜ Five tables as migrations. ⬜ Seed
+refresh, `/signup` (explicit account creation, email or phone, verified either way), `/login`
+(sign-in only: password, email link, or SMS code), `/auth/confirm`, `/auth/signout`, `/account`.
+⬜ Dashboard-side config for it to actually deliver: custom SMTP (the built-in sender only
+reaches the project's own team addresses), the two email templates pointed at `/auth/confirm`,
+and an SMS provider for phone. ⬜ Five tables as migrations. ⬜ Seed
 `commission_tiers` (SQL already written). ⬜ Generate `database.types.ts` (currently an empty
 `interface Database {}`, so the Supabase clients' generics are decorative until it's real).
 ⬜ Link `auth.users` to a `drivers`/riders row — nothing distinguishes a rider from a driver

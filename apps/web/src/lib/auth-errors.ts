@@ -4,7 +4,8 @@
  *
  * Unrecognised errors fall back to a generic line rather than surfacing the raw server message —
  * those are inconsistent in tone and can say more about account existence than a login form
- * should. The raw message still goes to the console so it's debuggable.
+ * should. In development the raw message is appended to that fallback and logged, because a
+ * generic string with no way back to the cause costs more debugging time than it saves.
  */
 export function authErrorMessage(raw: string): string {
   if (process.env.NODE_ENV !== "production") {
@@ -37,9 +38,29 @@ export function authErrorMessage(raw: string): string {
   if (m.includes("rate limit") || m.includes("too many") || m.includes("security purposes")) {
     return "Too many tries. Wait a minute, then try again.";
   }
-  if (m.includes("not found") || m.includes("no user")) {
-    return "No account with that email. Sign up to get started.";
+
+  // Project-configuration failures. These are ours, not the user's — say so plainly rather than
+  // implying they typed something wrong, and let the dev-only detail below carry the specifics.
+  if (m.includes("not authorized")) {
+    return "We can't send to that address yet. Try the address on the RIDO Supabase account, or set up custom SMTP.";
+  }
+  if (m.includes("error sending") || m.includes("failed to send")) {
+    return "We couldn't send that message. Check the email or SMS provider settings.";
+  }
+  if (m.includes("database error")) {
+    return "We couldn't finish creating the account. Try again in a moment.";
+  }
+  if (m.includes("sms") || m.includes("phone provider") || m.includes("unsupported phone")) {
+    return "Text messages aren't set up yet. Use email for now.";
+  }
+  if (m.includes("invalid api key") || m.includes("no api key")) {
+    return "This app isn't configured correctly. Check the Supabase keys in .env.local.";
   }
 
-  return "Something went wrong on our end. Try again in a moment.";
+  if (m.includes("not found") || m.includes("no user")) {
+    return "No account with those details. Sign up to get started.";
+  }
+
+  const generic = "Something went wrong on our end. Try again in a moment.";
+  return process.env.NODE_ENV === "production" ? generic : `${generic} (dev: ${raw})`;
 }

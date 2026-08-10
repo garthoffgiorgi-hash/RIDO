@@ -5,7 +5,7 @@ const COLUMNS = [
   {
     heading: "Rider",
     links: [
-      { href: "/request", label: "Get a rido" },
+      { href: "/login", label: "Get a rido" },
       { href: "/", label: "Cities" },
       { href: "/", label: "Safety" },
     ],
@@ -13,7 +13,7 @@ const COLUMNS = [
   {
     heading: "Driver",
     links: [
-      { href: "/login", label: "Drive with rido" },
+      { href: "/drivers", label: "Drive with rido" },
       { href: "/drivers", label: "Earnings" },
       { href: "/drivers", label: "Requirements" },
     ],

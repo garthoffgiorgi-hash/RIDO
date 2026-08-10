@@ -51,6 +51,15 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - Auth routes: `/login` (sign-in only), `/signup` (the only place accounts are created),
   `/auth/confirm` (exchanges an email `token_hash` for a session — **every** email-link flow
   needs it), `/auth/signout` (POST only), `/account` (first auth-gated route).
+- Both auth surfaces take email **or** phone. Phone is passwordless — the SMS code is the
+  credential, so there is deliberately no phone+password combination. Numbers are normalised to
+  E.164 by `src/lib/phone.ts` before they reach Supabase, which rejects any other shape; a bare
+  10-digit number is assumed US (first market is San Diego). **Phone needs an SMS provider
+  configured** under Authentication → Providers → Phone (Twilio et al., paid) — without one,
+  every phone flow errors.
+- Marketing CTAs: "Get a rido" → `/login`, "Drive with rido" → `/drivers`, except **on**
+  `/drivers` where it's the conversion CTA and goes to `/signup` (`/login` can't create an
+  account). `/request` exists but nothing links to it — it's an unbuilt placeholder.
 - **Supabase dashboard config, not code — easy to forget on a fresh project.** The default
   "Confirm signup" and "Magic Link" email templates point at Supabase's own hosted verify
   endpoint, not `/auth/confirm`, so out of the box the app's confirm route never receives a

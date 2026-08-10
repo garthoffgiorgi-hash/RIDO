@@ -18,10 +18,10 @@ export default function AboutPage() {
             takes — so we took less.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
-            <Button href="/request" variant="accent" size="lg">
+            <Button href="/login" variant="accent" size="lg">
               Get a rido
             </Button>
-            <Button href="/login" variant="ghost" invert size="lg">
+            <Button href="/drivers" variant="ghost" invert size="lg">
               Drive with rido
             </Button>
           </div>

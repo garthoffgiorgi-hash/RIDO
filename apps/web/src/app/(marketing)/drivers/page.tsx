@@ -58,7 +58,7 @@ export default function DriverLandingPage() {
           as you drive — 20%, then 12%, then just 8%.
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
-          <Button href="/login" size="lg">
+          <Button href="/signup" size="lg">
             Drive with rido
           </Button>
           <Button href="#requirements" variant="secondary" size="lg">
@@ -198,7 +198,7 @@ export default function DriverLandingPage() {
             $0 flat fees for your first {pilotMonths} months. Commission only.
           </h2>
           <div className="mt-7">
-            <Button href="/login" variant="accent" size="lg">
+            <Button href="/signup" variant="accent" size="lg">
               Drive with rido
             </Button>
           </div>

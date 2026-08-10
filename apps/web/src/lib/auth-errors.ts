@@ -56,6 +56,12 @@ export function authErrorMessage(raw: string): string {
   if (m.includes("invalid api key") || m.includes("no api key")) {
     return "This app isn't configured correctly. Check the Supabase keys in .env.local.";
   }
+  // The request never left the browser. Not an auth failure at all — surfacing it as one sends
+  // people hunting through Supabase settings for a problem that's in the URL, the network, or a
+  // blocker. ("Load failed" is Safari's wording for the same thing.)
+  if (m.includes("failed to fetch") || m.includes("load failed") || m.includes("networkerror")) {
+    return "Couldn't reach Supabase. Check NEXT_PUBLIC_SUPABASE_URL in .env.local, and whether a firewall, VPN or browser extension is blocking the request.";
+  }
 
   if (m.includes("not found") || m.includes("no user")) {
     return "No account with those details. Sign up to get started.";

@@ -41,6 +41,27 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - `src/components/domain/` — RIDO-specific: `RideCard`, `TierProgress`, `DriverStatusToggle`.
 - `src/lib/supabase/` (`client.ts` browser, `server.ts` server-only), `src/lib/stripe/`,
   `src/lib/maps/`.
+- `src/proxy.ts` — refreshes the Supabase session cookie on every request. Named `proxy.ts` /
+  `proxy()`, not `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on
+  nearly every route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**,
+  by design — a missing Supabase config fails loud, not silently.
+- `.env.local` (gitignored) holds the three Supabase values — copy `.env.example` and fill in
+  real ones from Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is server-only, never
+  `NEXT_PUBLIC_`, never pasted anywhere it could be logged or committed.
+- Auth routes: `/login` (sign-in only), `/signup` (the only place accounts are created),
+  `/auth/confirm` (exchanges an email `token_hash` for a session — **every** email-link flow
+  needs it), `/auth/signout` (POST only), `/account` (first auth-gated route).
+- **Supabase dashboard config, not code — easy to forget on a fresh project.** The default
+  "Confirm signup" and "Magic Link" email templates point at Supabase's own hosted verify
+  endpoint, not `/auth/confirm`, so out of the box the app's confirm route never receives a
+  token and every email link silently does nothing. Under Authentication → Email Templates,
+  rebuild both links as `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup` (magic link:
+  `type=magiclink`) — `{{ .RedirectTo }}` already carries the `emailRedirectTo` the app sent, so
+  this works in every environment without touching Site URL. Confirm signup must also show
+  `{{ .Token }}` in the body — `/signup`'s code-entry step verifies against the raw OTP, not the
+  hash. Separately, add each environment's origin to Authentication → URL Configuration →
+  Redirect URLs (e.g. `http://localhost:4000/**` for local dev) — Supabase drops
+  `emailRedirectTo` if it isn't allowlisted, even though the app never sees an error for it.
 - **There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as
   `@rido/pricing`. If you're reaching for arithmetic on a fare here, you're in the wrong file.
 - `src/types/database.types.ts` is generated. Regenerate after every migration; never hand-edit.
@@ -63,3 +84,9 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
   is interim until Phase 2 computes it from `@rido/pricing` directly.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").
+- **Never surface a raw Supabase auth error to a user.** Pass it through
+  `authErrorMessage()` in `src/lib/auth-errors.ts` — raw strings are off-voice and can reveal
+  whether an account exists. Add new cases there, not inline in a component.
+- **Login never creates accounts** (`shouldCreateUser: false`). Account creation is an explicit
+  act at `/signup`, which verifies the email before the account is usable — drivers are
+  compliance-gated, so an account existing should always be someone's deliberate decision.

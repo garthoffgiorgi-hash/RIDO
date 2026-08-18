@@ -45,10 +45,16 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
   (`server-only`: session reads, email-link completion, sign-out), `errors.ts`, `result.ts`.
   Pages call these; **pages never call `supabase.auth.*` directly.** That's what keeps the auth
   rules in one testable place instead of repeated per call site.
-- `src/proxy.ts` — refreshes the Supabase session cookie on every request. Named `proxy.ts` /
-  `proxy()`, not `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on
-  nearly every route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**,
-  by design — a missing Supabase config fails loud, not silently.
+- `src/proxy.ts` — refreshes the Supabase session cookie on every request, and bounces anonymous
+  visitors off `PROTECTED_PREFIXES` as a real 307. Named `proxy.ts` / `proxy()`, not
+  `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on nearly every
+  route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**, by design — a
+  missing Supabase config fails loud, not silently.
+- `error.tsx` · `global-error.tsx` · `not-found.tsx` · `loading.tsx` at the app root. Note that
+  `loading.tsx` puts every route behind a Suspense boundary, which turns a page-level
+  `redirect()` into a streamed 200 plus a client navigation — that's why the auth gate is
+  duplicated into `proxy.ts`. **`requireUser()` in the page is still the security boundary**;
+  the proxy list is for a clean HTTP status, so forgetting an entry there fails safe.
 - `.env.local` (gitignored) holds the three Supabase values — copy `.env.example` and fill in
   real ones from Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is server-only, never
   `NEXT_PUBLIC_`, never pasted anywhere it could be logged or committed.

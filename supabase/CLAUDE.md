@@ -48,6 +48,9 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
 
 ## Tests (`supabase/tests/`, pgTAP)
 
+Required, not optional — the compliance gate has to hold in the database and not only the app,
+so it is tested there and not only through the app (ADR-0007).
+
 At minimum, assert that: an unvetted driver cannot reach `status = 'active'`; a driver cannot
 read another driver's rides; a non-service-role write to a commission column is rejected; and
 `bump_monthly_stats` is atomic under concurrent completions for the same driver.

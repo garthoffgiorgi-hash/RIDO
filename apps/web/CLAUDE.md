@@ -35,59 +35,61 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 
 ## Structure
 
-- `src/app/(marketing)/` · `(rider)/` · `(driver)/` — route groups, one flow each. No shared
-  layout between rider and driver beyond the root.
-- `src/components/ui/` — brand primitives: `Button`, `Card`, `Input`, `FareChip`, `BottomSheet`.
-- `src/components/domain/` — RIDO-specific: `RideCard`, `TierProgress`, `DriverStatusToggle`.
-- `src/lib/supabase/` (`client.ts` browser, `server.ts` server-only), `src/lib/stripe/`,
-  `src/lib/maps/`. These wire up the **vendor SDK** and nothing else.
-- `src/lib/auth/` — **the app's auth boundary.** `browser.ts` (client operations), `server.ts`
-  (`server-only`: session reads, email-link completion, sign-out), `errors.ts`, `result.ts`.
-  Pages call these; **pages never call `supabase.auth.*` directly.** That's what keeps the auth
-  rules in one testable place instead of repeated per call site.
-- `src/proxy.ts` — refreshes the Supabase session cookie on every request, and bounces anonymous
-  visitors off `PROTECTED_PREFIXES` as a real 307. Named `proxy.ts` / `proxy()`, not
-  `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on nearly every
-  route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**, by design — a
-  missing Supabase config fails loud, not silently.
-- `error.tsx` · `global-error.tsx` · `not-found.tsx` · `loading.tsx` at the app root. Note that
-  `loading.tsx` puts every route behind a Suspense boundary, which turns a page-level
-  `redirect()` into a streamed 200 plus a client navigation — that's why the auth gate is
-  duplicated into `proxy.ts`. **`requireUser()` in the page is still the security boundary**;
-  the proxy list is for a clean HTTP status, so forgetting an entry there fails safe.
-- `.env.local` (gitignored) holds the three Supabase values — copy `.env.example` and fill in
-  real ones from Settings → API. `SUPABASE_SERVICE_ROLE_KEY` is server-only, never
-  `NEXT_PUBLIC_`, never pasted anywhere it could be logged or committed.
-- Auth routes: `/login` (sign-in only), `/signup` (the only place accounts are created),
-  `/auth/confirm` (exchanges an email `token_hash` for a session — **every** email-link flow
-  needs it), `/auth/signout` (POST only), `/account` (first auth-gated route).
-- Both auth surfaces take email **or** phone. Phone is passwordless — the SMS code is the
-  credential, so there is deliberately no phone+password combination. Numbers are normalised to
-  E.164 by `src/lib/phone.ts` before they reach Supabase, which rejects any other shape; a bare
-  10-digit number is assumed US (first market is San Diego). **Phone needs an SMS provider
-  configured** under Authentication → Providers → Phone (Twilio et al., paid) — without one,
-  every phone flow errors.
-- Marketing CTAs: "Get a rido" → `/login`, "Drive with rido" → `/drivers`, except **on**
-  `/drivers` where it's the conversion CTA and goes to `/signup` (`/login` can't create an
-  account). `/request` exists but nothing links to it — it's an unbuilt placeholder.
-- **Supabase dashboard config, not code — easy to forget on a fresh project.** The default
-  "Confirm signup" and "Magic Link" email templates point at Supabase's own hosted verify
-  endpoint, not `/auth/confirm`, so out of the box the app's confirm route never receives a
-  token and every email link silently does nothing. Under Authentication → Email Templates,
-  rebuild both links as `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=signup` (magic link:
-  `type=magiclink`) — `{{ .RedirectTo }}` already carries the `emailRedirectTo` the app sent, so
-  this works in every environment without touching Site URL. Confirm signup must also show
-  `{{ .Token }}` in the body — `/signup`'s code-entry step verifies against the raw OTP, not the
-  hash. Separately, add each environment's origin to Authentication → URL Configuration →
-  Redirect URLs (e.g. `http://localhost:4000/**` for local dev) — Supabase drops
-  `emailRedirectTo` if it isn't allowlisted, even though the app never sees an error for it.
-- **There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as
-  `@rido/pricing`. If you're reaching for arithmetic on a fare here, you're in the wrong file.
-- `src/types/database.types.ts` is generated. Regenerate after every migration; never hand-edit.
+| Path | Holds |
+|---|---|
+| `src/app/(marketing)/` · `(rider)/` · `(driver)/` | Route groups, one flow each. No shared layout between rider and driver beyond the root |
+| `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
+| `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
+| `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` today, `rides/`, `stripe/`, `maps/` to come |
+| `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
+| `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
+
+`src/proxy.ts` refreshes the Supabase session cookie on every request and bounces anonymous
+visitors off `PROTECTED_PREFIXES` as a real 307. Named `proxy.ts` / `proxy()`, not
+`middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. It runs on nearly every
+route, so **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s** — by design; a
+missing Supabase config fails loud, not silently.
+
+`error.tsx` · `global-error.tsx` · `not-found.tsx` · `loading.tsx` sit at the app root.
+`loading.tsx` puts every route behind a Suspense boundary, which turns a page-level `redirect()`
+into a streamed 200 plus a client navigation — that's why the auth gate is *also* in `proxy.ts`.
+**`requireUser()` in the page remains the security boundary**; the proxy list only buys a clean
+HTTP status, so forgetting an entry there fails safe.
+
+**There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as `@rido/pricing`.
+If you're reaching for arithmetic on a fare here, you're in the wrong file.
+
+## Auth
+
+`src/lib/auth/` is the boundary and the reference implementation of ADR-0006: `browser.ts`
+(client operations), `server.ts` (`server-only` — session reads, email-link completion,
+sign-out), `errors.ts` (vendor error → RIDO voice), `result.ts` (`AuthResult`).
+
+- Routes: `/login` (sign-in only), `/signup` (**the only place accounts are created**),
+  `/auth/confirm` (exchanges an email `token_hash` for a session — every email-link flow needs
+  it), `/auth/signout` (POST only, so an `<img>` tag can't log people out), `/account`.
+- Both surfaces take email **or** phone. Phone is passwordless — the SMS code is the credential,
+  so there is deliberately no phone+password combination. Numbers normalise to E.164 via
+  `src/lib/phone.ts`; a bare 10-digit number is assumed US (first market is San Diego).
+- A phone-only account has **no** `email`. Anything rendering an identity handles both.
+- **Dashboard configuration is required and fails silently without it** — email templates,
+  redirect allowlist, custom SMTP, SMS provider. See `docs/architecture/auth-setup.md`.
+- `.env.local` (gitignored) holds the three Supabase values; copy `.env.example`. Never create or
+  edit it through GitHub's web UI — that path ignores `.gitignore` and commits the secret.
 
 ## Rules
 
 - Server Components by default. `"use client"` needs a reason you could state out loud.
+- **Never call a vendor SDK from a component, page, or route handler** — go through
+  `src/lib/<domain>/`. A component calling `supabase.auth.*` is a bug even when it works: it puts
+  a rule somewhere it can drift. Operations return app-shaped results, so a component *cannot*
+  render a raw vendor error. New behaviour is a new function there. (ADR-0006)
+- **Login never creates accounts.** `shouldCreateUser: false` is set once inside
+  `src/lib/auth/browser.ts`; callers don't pass it, so they can't forget it. Account creation is
+  an explicit act at `/signup`, verified before the account is usable — drivers are
+  compliance-gated, so an account existing is always someone's deliberate decision.
+- **Pure logic in `src/lib/` ships with tests** — phone normalisation, error mapping, redirect
+  guards. They take arguments and return values; there's no setup cost. (ADR-0007)
 - `params` and `searchParams` in page/layout components are **Promises**, not plain objects
   (`const { id } = await params`). Easy to get wrong copying older Next.js examples.
 - The service-role client is importable **only** from `src/lib/supabase/server.ts`, which carries
@@ -103,11 +105,6 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
   is interim until Phase 2 computes it from `@rido/pricing` directly.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").
-- **Auth goes through `src/lib/auth/`, never the SDK directly.** A component calling
-  `supabase.auth.*` is a bug even if it works — it puts a rule somewhere it can drift. Operations
-  return `AuthResult`, so a component receives an already-translated message and *cannot* render
-  a raw vendor error. New auth behaviour is a new function there, with its case in `errors.ts`.
-- **Login never creates accounts.** `shouldCreateUser: false` is set once inside
-  `src/lib/auth/browser.ts`; callers don't pass it, so they can't forget it. Account creation is an
-  explicit act at `/signup`, verified before the account is usable — drivers are
-  compliance-gated, so an account existing should always be someone's deliberate decision.
+- Marketing CTAs: "Get a rido" → `/login`, "Drive with rido" → `/drivers` — except **on**
+  `/drivers`, where it's the conversion CTA and goes to `/signup`. `/request` exists but nothing
+  links to it; it's an unbuilt placeholder.

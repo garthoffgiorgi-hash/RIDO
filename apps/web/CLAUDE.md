@@ -40,7 +40,11 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 - `src/components/ui/` — brand primitives: `Button`, `Card`, `Input`, `FareChip`, `BottomSheet`.
 - `src/components/domain/` — RIDO-specific: `RideCard`, `TierProgress`, `DriverStatusToggle`.
 - `src/lib/supabase/` (`client.ts` browser, `server.ts` server-only), `src/lib/stripe/`,
-  `src/lib/maps/`.
+  `src/lib/maps/`. These wire up the **vendor SDK** and nothing else.
+- `src/lib/auth/` — **the app's auth boundary.** `browser.ts` (client operations), `server.ts`
+  (`server-only`: session reads, email-link completion, sign-out), `errors.ts`, `result.ts`.
+  Pages call these; **pages never call `supabase.auth.*` directly.** That's what keeps the auth
+  rules in one testable place instead of repeated per call site.
 - `src/proxy.ts` — refreshes the Supabase session cookie on every request. Named `proxy.ts` /
   `proxy()`, not `middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. Runs on
   nearly every route; **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**,
@@ -93,9 +97,11 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
   is interim until Phase 2 computes it from `@rido/pricing` directly.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").
-- **Never surface a raw Supabase auth error to a user.** Pass it through
-  `authErrorMessage()` in `src/lib/auth-errors.ts` — raw strings are off-voice and can reveal
-  whether an account exists. Add new cases there, not inline in a component.
-- **Login never creates accounts** (`shouldCreateUser: false`). Account creation is an explicit
-  act at `/signup`, which verifies the email before the account is usable — drivers are
+- **Auth goes through `src/lib/auth/`, never the SDK directly.** A component calling
+  `supabase.auth.*` is a bug even if it works — it puts a rule somewhere it can drift. Operations
+  return `AuthResult`, so a component receives an already-translated message and *cannot* render
+  a raw vendor error. New auth behaviour is a new function there, with its case in `errors.ts`.
+- **Login never creates accounts.** `shouldCreateUser: false` is set once inside
+  `src/lib/auth/browser.ts`; callers don't pass it, so they can't forget it. Account creation is an
+  explicit act at `/signup`, verified before the account is usable — drivers are
   compliance-gated, so an account existing should always be someone's deliberate decision.

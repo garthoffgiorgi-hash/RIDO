@@ -1,29 +1,42 @@
 "use client";
 
-// Explicit sign-up path. Login never creates accounts (shouldCreateUser: false there) — an
-// account only exists because someone deliberately made one here, which matters for a product
-// where drivers are compliance-gated (supabase/CLAUDE.md).
+// The only place an account is created. Login can't do it (see @/lib/auth/browser) — an account
+// exists because someone deliberately made one here, which matters for a product where drivers
+// are compliance-gated (supabase/CLAUDE.md).
 //
-// Two ways to sign up, both verified before the account is usable:
+// Two ways in, both verified before the account is usable:
 //   Email — email + password, then a 6-digit code (or the link in the same email, which
 //           /auth/confirm handles, so either works and neither fails silently).
-//   Phone — number only, then a 6-digit SMS code. Passwordless by design: the code IS the
-//           credential, matching how /login treats phone.
+//   Phone — number only, then a 6-digit SMS code. Passwordless: the code is the credential.
+//
+// Presentation and form state only. Auth operations live in @/lib/auth/browser.
 
+import { Loader2, MailCheck, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
-import { Loader2, MailCheck, MessageSquare } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Wordmark } from "@/components/domain/Wordmark";
-import { createBrowserClient } from "@/lib/supabase/client";
-import { authErrorMessage } from "@/lib/auth-errors";
-import { formatPhoneForDisplay, toE164 } from "@/lib/phone";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import {
+  resendEmailSignUpCode,
+  resendPhoneCode,
+  signUpWithEmail,
+  signUpWithPhone,
+  verifyEmailCode,
+  verifyPhoneCode,
+} from "@/lib/auth/browser";
+import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Method = "email" | "phone";
 type Step = "credentials" | "verify";
+
+const METHODS = [
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+] as const satisfies readonly { value: Method; label: string }[];
 
 export default function SignUpPage() {
   const router = useRouter();
@@ -36,8 +49,7 @@ export default function SignUpPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  // The E.164 number the code actually went to — verification uses this rather than re-parsing
-  // whatever is currently in the input.
+  // The E.164 number the code went to — verification uses this, not the raw input.
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
 
   function resetFeedback() {
@@ -58,44 +70,22 @@ export default function SignUpPage() {
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-
     if (method === "email") {
-      const { error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { emailRedirectTo: `${window.location.origin}/auth/confirm?next=/account` },
-      });
-
+      const result = await signUpWithEmail(email, password);
+      if (!result.ok) setError(result.message);
+      else setStep("verify");
       setLoading(false);
-      if (authError) {
-        setError(authErrorMessage(authError.message));
-        return;
-      }
+      return;
+    }
+
+    const result = await signUpWithPhone(phone);
+    if (!result.ok) {
+      setError(result.message);
+    } else {
+      setCodeSentTo(result.data.sentTo);
       setStep("verify");
-      return;
     }
-
-    const normalised = toE164(phone);
-    if (!normalised) {
-      setError("That doesn't look like a phone number. Include the area code.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      phone: normalised,
-      // The one place account creation is allowed.
-      options: { shouldCreateUser: true },
-    });
-
     setLoading(false);
-    if (authError) {
-      setError(authErrorMessage(authError.message));
-      return;
-    }
-    setCodeSentTo(normalised);
-    setStep("verify");
   }
 
   async function handleVerify(e: FormEvent<HTMLFormElement>) {
@@ -103,18 +93,13 @@ export default function SignUpPage() {
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-    const { error: authError } =
+    const result =
       method === "email"
-        ? await supabase.auth.verifyOtp({ email, token: code.trim(), type: "signup" })
-        : await supabase.auth.verifyOtp({
-            phone: codeSentTo ?? "",
-            token: code.trim(),
-            type: "sms",
-          });
+        ? await verifyEmailCode(email, code)
+        : await verifyPhoneCode(codeSentTo ?? "", code);
 
-    if (authError) {
-      setError(authErrorMessage(authError.message));
+    if (!result.ok) {
+      setError(result.message);
       setLoading(false);
       return;
     }
@@ -127,27 +112,18 @@ export default function SignUpPage() {
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-    const { error: authError } =
+    const result =
       method === "email"
-        ? await supabase.auth.resend({
-            type: "signup",
-            email,
-            options: { emailRedirectTo: `${window.location.origin}/auth/confirm?next=/account` },
-          })
-        : await supabase.auth.signInWithOtp({
-            phone: codeSentTo ?? "",
-            options: { shouldCreateUser: true },
-          });
+        ? await resendEmailSignUpCode(email)
+        : // `true` — a resend here is still part of creating the account.
+          await resendPhoneCode(codeSentTo ?? "", true);
 
+    if (!result.ok) setError(result.message);
+    else
+      setNotice(
+        method === "email" ? "Sent. Check your inbox again." : "Sent. Check your messages again.",
+      );
     setLoading(false);
-    if (authError) {
-      setError(authErrorMessage(authError.message));
-      return;
-    }
-    setNotice(
-      method === "email" ? "Sent. Check your inbox again." : "Sent. Check your messages again.",
-    );
   }
 
   const sentTo =
@@ -168,14 +144,13 @@ export default function SignUpPage() {
                 One account for riding and driving. You pick which when you start.
               </p>
 
-              <div className="mb-5 flex gap-1 rounded-input bg-ivory p-1">
-                <MethodTab active={method === "email"} onClick={() => switchMethod("email")}>
-                  Email
-                </MethodTab>
-                <MethodTab active={method === "phone"} onClick={() => switchMethod("phone")}>
-                  Phone
-                </MethodTab>
-              </div>
+              <SegmentedControl
+                label="Sign-up method"
+                options={METHODS}
+                value={method}
+                onChange={switchMethod}
+                className="mb-5"
+              />
 
               <form onSubmit={handleSignUp} className="flex flex-col gap-4" noValidate>
                 {method === "email" ? (
@@ -327,28 +302,5 @@ export default function SignUpPage() {
         </p>
       </div>
     </main>
-  );
-}
-
-function MethodTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`h-9 flex-1 rounded-[8px] text-[13.5px] font-semibold transition-colors duration-150 ease-standard ${
-        active ? "bg-white text-midnight shadow-[var(--shadow-float)]" : "text-slate hover:text-ink"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

@@ -5,25 +5,34 @@
 // for now — split rider/driver once there's a way to tell them apart (a `role` on the driver
 // row, most likely) rather than guessing here.
 //
-// Sign-in only: no mode here creates an account. An unknown email or phone gets an error, not a
-// silent new account. Creating one is an explicit act at /signup.
-//
-// Three ways in: email + password, an emailed link, or an SMS code. Phone is passwordless by
-// design — the code IS the credential, which is why there's no phone+password combination.
+// This file owns presentation and form state only. Every auth operation goes through
+// @/lib/auth/browser, which is where "sign-in never creates an account" is enforced.
 
+import { Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState, type FormEvent } from "react";
-import { Loader2, MailCheck } from "lucide-react";
+import { type FormEvent, Suspense, useState } from "react";
+import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
-import { Wordmark } from "@/components/domain/Wordmark";
-import { createBrowserClient } from "@/lib/supabase/client";
-import { authErrorMessage } from "@/lib/auth-errors";
-import { formatPhoneForDisplay, toE164 } from "@/lib/phone";
+import { SegmentedControl } from "@/components/ui/SegmentedControl";
+import {
+  resendPhoneCode,
+  sendSignInCode,
+  sendSignInLink,
+  signInWithPassword,
+  verifyPhoneCode,
+} from "@/lib/auth/browser";
+import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Mode = "password" | "email-link" | "phone";
+
+const MODES = [
+  { value: "password", label: "Password" },
+  { value: "email-link", label: "Email link" },
+  { value: "phone", label: "Phone" },
+] as const satisfies readonly { value: Mode; label: string }[];
 
 const LINK_ERRORS: Record<string, string> = {
   link_invalid: "That link isn't valid. Request a new one below.",
@@ -54,8 +63,8 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [emailLinkSent, setEmailLinkSent] = useState(false);
-  // Set once the SMS is away — holds the E.164 number the code was sent to, so verification
-  // uses exactly what Supabase received rather than re-parsing the input.
+  // Set once the SMS is away — the E.164 number the code went to, which is what verification
+  // must use rather than re-reading the input.
   const [codeSentTo, setCodeSentTo] = useState<string | null>(null);
 
   function resetFeedback() {
@@ -71,61 +80,38 @@ function LoginForm() {
     setCode("");
   }
 
+  function goToAccount() {
+    router.push("/account");
+    router.refresh();
+  }
+
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-
     if (mode === "password") {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) {
-        setError(authErrorMessage(authError.message));
+      const result = await signInWithPassword(email, password);
+      if (!result.ok) {
+        setError(result.message);
         setLoading(false);
         return;
       }
-      router.push("/account");
-      router.refresh();
+      goToAccount();
       return;
     }
 
     if (mode === "email-link") {
-      const { error: authError } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          // Sign-in only — an unknown email errors instead of quietly creating an account.
-          shouldCreateUser: false,
-          emailRedirectTo: `${window.location.origin}/auth/confirm?next=/account`,
-        },
-      });
-      if (authError) {
-        setError(authErrorMessage(authError.message));
-        setLoading(false);
-        return;
-      }
-      setEmailLinkSent(true);
+      const result = await sendSignInLink(email);
+      if (!result.ok) setError(result.message);
+      else setEmailLinkSent(true);
       setLoading(false);
       return;
     }
 
-    const normalised = toE164(phone);
-    if (!normalised) {
-      setError("That doesn't look like a phone number. Include the area code.");
-      setLoading(false);
-      return;
-    }
-
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      phone: normalised,
-      options: { shouldCreateUser: false },
-    });
-    if (authError) {
-      setError(authErrorMessage(authError.message));
-      setLoading(false);
-      return;
-    }
-    setCodeSentTo(normalised);
+    const result = await sendSignInCode(phone);
+    if (!result.ok) setError(result.message);
+    else setCodeSentTo(result.data.sentTo);
     setLoading(false);
   }
 
@@ -135,21 +121,13 @@ function LoginForm() {
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-    const { error: authError } = await supabase.auth.verifyOtp({
-      phone: codeSentTo,
-      token: code.trim(),
-      type: "sms",
-    });
-
-    if (authError) {
-      setError(authErrorMessage(authError.message));
+    const result = await verifyPhoneCode(codeSentTo, code);
+    if (!result.ok) {
+      setError(result.message);
       setLoading(false);
       return;
     }
-
-    router.push("/account");
-    router.refresh();
+    goToAccount();
   }
 
   async function handleResendCode() {
@@ -157,18 +135,11 @@ function LoginForm() {
     resetFeedback();
     setLoading(true);
 
-    const supabase = createBrowserClient();
-    const { error: authError } = await supabase.auth.signInWithOtp({
-      phone: codeSentTo,
-      options: { shouldCreateUser: false },
-    });
-
+    // `false` — a resend on the login page still can't register a new number.
+    const result = await resendPhoneCode(codeSentTo, false);
+    if (!result.ok) setError(result.message);
+    else setNotice("Sent. Check your messages again.");
     setLoading(false);
-    if (authError) {
-      setError(authErrorMessage(authError.message));
-      return;
-    }
-    setNotice("Sent. Check your messages again.");
   }
 
   return (
@@ -182,17 +153,13 @@ function LoginForm() {
           <h1 className="mb-1 font-sora text-2xl font-bold text-midnight">Log in</h1>
           <p className="mb-6 text-sm text-slate">Riders and drivers use the same account.</p>
 
-          <div className="mb-5 flex gap-1 rounded-input bg-ivory p-1">
-            <ModeTab active={mode === "password"} onClick={() => switchMode("password")}>
-              Password
-            </ModeTab>
-            <ModeTab active={mode === "email-link"} onClick={() => switchMode("email-link")}>
-              Email link
-            </ModeTab>
-            <ModeTab active={mode === "phone"} onClick={() => switchMode("phone")}>
-              Phone
-            </ModeTab>
-          </div>
+          <SegmentedControl
+            label="Log in method"
+            options={MODES}
+            value={mode}
+            onChange={switchMode}
+            className="mb-5"
+          />
 
           {mode === "email-link" && emailLinkSent ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
@@ -351,28 +318,5 @@ function LoginForm() {
         </p>
       </div>
     </main>
-  );
-}
-
-function ModeTab({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`h-9 flex-1 rounded-[8px] text-[13.5px] font-semibold transition-colors duration-150 ease-standard ${
-        active ? "bg-white text-midnight shadow-[var(--shadow-float)]" : "text-slate hover:text-ink"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

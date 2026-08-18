@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
-import { Card } from "@/components/ui/Card";
 import { Wordmark } from "@/components/domain/Wordmark";
-import { createServerClient } from "@/lib/supabase/server";
+import { Card } from "@/components/ui/Card";
+import { requireUser } from "@/lib/auth/server";
 
 /**
  * Minimal signed-in surface. Two jobs: give sign-out a home, and prove the session is readable
@@ -11,14 +10,7 @@ import { createServerClient } from "@/lib/supabase/server";
  * The first route in the app that actually requires auth. Everything else is still public.
  */
 export default async function AccountPage() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = await requireUser();
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ivory p-6">
@@ -30,7 +22,7 @@ export default async function AccountPage() {
         <Card>
           <h1 className="mb-1 font-sora text-2xl font-bold text-midnight">You&apos;re logged in</h1>
           <p className="mb-6 text-sm text-slate">
-            Signed in as <span className="font-semibold text-ink">{user.email}</span>.
+            Signed in as <span className="font-semibold text-ink">{user.email ?? user.phone}</span>.
           </p>
 
           {/* Plain form post, no client component needed — POST-only so a third-party <img> tag

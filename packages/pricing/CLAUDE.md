@@ -45,7 +45,10 @@ earnings yield less take-home and invites gaming the $1,000 / $3,000 lines.
 
 ## Tests are the specification
 
-Colocated `*.test.ts`. A change to the math without a change to the tests is wrong.
+Colocated `*.test.ts`. A change to the math without a change to the tests is wrong. This package
+is the top tier of ADR-0007: **merge is blocked without these.** A wrong figure here is
+snapshotted onto the `rides` row and never recomputed, so it isn't a bug that gets fixed — it's a
+permanent error in the accounting record.
 
 Required cases:
 

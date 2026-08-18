@@ -17,6 +17,19 @@ jobs:
           node-version: "22.6.0"
       - run: npm run check:context
 
+  lint:
+    name: Lint + format (Biome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      # Biome is the repo's only lint/format toolchain, so a bare `npm ci` at the root is all it
+      # needs — no workspace installs, no build step.
+      - run: npm ci
+      - run: npm run lint
+
   pricing-node:
     name: packages/pricing tests (Node)
     runs-on: ubuntu-latest

@@ -1,16 +1,12 @@
-import { NextResponse, type NextRequest } from "next/server";
-import { createServerClient } from "@/lib/supabase/server";
+import { type NextRequest, NextResponse } from "next/server";
+import { signOut } from "@/lib/auth/server";
 
 /**
- * Signs the current user out and clears the session cookie.
- *
- * POST only, deliberately: a GET sign-out can be triggered by any third party embedding
- * `<img src="…/auth/signout">`, logging people out without them asking.
+ * POST only, deliberately. A GET sign-out can be triggered by any third-party page embedding
+ * `<img src="https://rido.../auth/signout">`, which logs people out at a stranger's whim.
  */
 export async function POST(request: NextRequest) {
-  const supabase = await createServerClient();
-  await supabase.auth.signOut();
-
-  // 303 forces the browser to follow with GET rather than re-POSTing to the destination.
+  await signOut();
+  // 303 so the browser follows with GET rather than re-POSTing to the destination.
   return NextResponse.redirect(new URL("/", request.url), { status: 303 });
 }

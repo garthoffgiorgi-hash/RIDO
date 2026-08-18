@@ -1,9 +1,22 @@
-import { ArrowRight, BadgeDollarSign, CarFront, Map, MapPin, ShieldCheck } from "lucide-react";
+// `Map` is aliased: importing it bare shadows the global Map constructor for this whole module.
+import {
+  ArrowRight,
+  BadgeDollarSign,
+  CarFront,
+  Map as MapIcon,
+  MapPin,
+  ShieldCheck,
+} from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FareChip } from "@/components/ui/FareChip";
-import { driverKeepsPct, incumbentEffectiveTakeRange, launchCity, pilotMonths } from "@/lib/mock-data";
+import {
+  driverKeepsPct,
+  incumbentEffectiveTakeRange,
+  launchCity,
+  pilotMonths,
+} from "@/lib/mock-data";
 
 const HOW_IT_WORKS = [
   {
@@ -42,25 +55,33 @@ export default function RiderLandingPage() {
             Your r<span className="text-signal">i</span>do is waiting.
           </h1>
           <p className="mt-5 max-w-[470px] text-lg leading-relaxed text-slate">
-            A fair price for you, a fair cut for your driver. The big apps quietly take up to
-            half of every fare — we built the opposite.
+            A fair price for you, a fair cut for your driver. The big apps quietly take up to half
+            of every fare — we built the opposite.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Button href="/request" size="lg">
+            <Button href="/login" size="lg">
               Get a rido
             </Button>
-            <Button href="/login" variant="secondary" size="lg">
+            <Button href="/drivers" variant="secondary" size="lg">
               Drive with rido
             </Button>
           </div>
           <div className="mt-9 flex flex-wrap gap-9">
-            <Stat label="Drivers keep" value={driverKeepsPct} caption="of every fare, commission-only" />
+            <Stat
+              label="Drivers keep"
+              value={driverKeepsPct}
+              caption="of every fare, commission-only"
+            />
             <Stat
               label="Incumbents take"
               value={`up to ${incumbentEffectiveTakeRange.split("–")[1]}`}
               caption="in effective commission"
             />
-            <Stat label="Launch pilot" value="$0" caption={`driver fees for ${pilotMonths} months`} />
+            <Stat
+              label="Launch pilot"
+              value="$0"
+              caption={`driver fees for ${pilotMonths} months`}
+            />
           </div>
         </div>
 
@@ -81,7 +102,7 @@ export default function RiderLandingPage() {
               <span className="text-[13px] font-semibold text-ink">Your destination</span>
             </div>
             <div className="mt-4">
-              <Button href="/request" fullWidth size="lg">
+              <Button href="/login" fullWidth size="lg">
                 Get a rido
               </Button>
             </div>
@@ -142,8 +163,8 @@ export default function RiderLandingPage() {
               We take less, so your fare stays low — and your driver&apos;s cut stays high.
             </h2>
             <p className="mb-6 max-w-[460px] text-base leading-relaxed text-slate">
-              Other apps quietly take up to half of every fare. Our commission runs far lower,
-              which means a lower price for you without shorting the person driving you there.
+              Other apps quietly take up to half of every fare. Our commission runs far lower, which
+              means a lower price for you without shorting the person driving you there.
             </p>
             <a
               href="/about"
@@ -165,11 +186,13 @@ export default function RiderLandingPage() {
             <div className="h-px bg-mist" />
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-midnight/8 text-midnight">
-                <Map size={20} strokeWidth={2} />
+                <MapIcon size={20} strokeWidth={2} />
               </span>
               <div>
                 <div className="text-[14.5px] font-semibold text-ink">Clean, live tracking</div>
-                <div className="text-[13px] text-slate">Midnight route, Signal live-driver dot.</div>
+                <div className="text-[13px] text-slate">
+                  Midnight route, Signal live-driver dot.
+                </div>
               </div>
             </div>
           </Card>
@@ -183,7 +206,9 @@ function Stat({ label, value, caption }: { label: string; value: string; caption
   return (
     <div>
       <div className="eyebrow">{label}</div>
-      <div className="tabular mt-1 mb-0.5 font-sora text-[26px] font-bold text-midnight">{value}</div>
+      <div className="tabular mt-1 mb-0.5 font-sora text-[26px] font-bold text-midnight">
+        {value}
+      </div>
       <div className="text-[12.5px] text-slate">{caption}</div>
     </div>
   );

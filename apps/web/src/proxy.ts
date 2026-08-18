@@ -14,6 +14,22 @@ import { NextResponse, type NextRequest } from "next/server";
  * Do not add code between createServerClient and supabase.auth.getUser() below — that call is
  * what actually performs the refresh, and reordering breaks it silently.
  */
+
+/**
+ * Routes an anonymous visitor is bounced off, as a real 307, before the route renders.
+ *
+ * **This list is not the security boundary** — `requireUser()` in the page is. A path missing
+ * here still redirects, just one render later. The list exists because a page-level `redirect()`
+ * sitting behind `loading.tsx` streams as a 200 plus a client-side navigation; catching it here
+ * keeps protected routes a clean HTTP redirect.
+ */
+const PROTECTED_PREFIXES = ["/account"] as const;
+
+function isProtected(pathname: string): boolean {
+  return PROTECTED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -38,7 +54,14 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user && isProtected(request.nextUrl.pathname)) {
+    const login = new URL("/login", request.url);
+    return NextResponse.redirect(login);
+  }
 
   return response;
 }

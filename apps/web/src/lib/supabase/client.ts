@@ -41,6 +41,6 @@ function warnIfMisconfigured(url: string, anonKey: string) {
   }
 
   if (problems.length) {
-    console.error("[supabase] Check apps/web/.env.local:\n  - " + problems.join("\n  - "));
+    console.error(`[supabase] Check apps/web/.env.local:\n  - ${problems.join("\n  - ")}`);
   }
 }

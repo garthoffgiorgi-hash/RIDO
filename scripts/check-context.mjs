@@ -29,9 +29,7 @@ const WARN_ONLY = process.argv.includes("--warn-only");
 // "proposals" is a staging area for not-yet-adopted structure: its files intentionally
 // reference paths that don't exist until the proposal is merged. Delete the directory once
 // a proposal lands and this exclusion stops mattering.
-const SKIP_DIRS = new Set([
-  ".git", "node_modules", ".next", "dist", "out", ".vercel", "proposals",
-]);
+const SKIP_DIRS = new Set([".git", "node_modules", ".next", "dist", "out", ".vercel", "proposals"]);
 
 const CLAUDE_MD_MAX_LINES = 200;
 const DOC_MAX_LINES = 250;

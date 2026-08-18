@@ -145,7 +145,9 @@ export default function SignUpPage() {
       setError(authErrorMessage(authError.message));
       return;
     }
-    setNotice(method === "email" ? "Sent. Check your inbox again." : "Sent. Check your messages again.");
+    setNotice(
+      method === "email" ? "Sent. Check your inbox again." : "Sent. Check your messages again.",
+    );
   }
 
   const sentTo =
@@ -249,7 +251,9 @@ export default function SignUpPage() {
               </h1>
               <p className="mb-6 text-center text-sm text-slate">
                 We sent a code to <span className="font-semibold text-ink">{sentTo}</span>.
-                {method === "email" ? " Enter it below, or click the link in the email." : " Enter it below."}
+                {method === "email"
+                  ? " Enter it below, or click the link in the email."
+                  : " Enter it below."}
               </p>
 
               <form onSubmit={handleVerify} className="flex flex-col gap-4" noValidate>
@@ -313,7 +317,10 @@ export default function SignUpPage() {
 
         <p className="mt-6 text-center text-sm text-slate">
           Already have an account?{" "}
-          <Link href="/login" className="font-semibold text-signal no-underline hover:text-midnight">
+          <Link
+            href="/login"
+            className="font-semibold text-signal no-underline hover:text-midnight"
+          >
             Log in
           </Link>
           .

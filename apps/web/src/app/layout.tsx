@@ -19,9 +19,7 @@ export const metadata: Metadata = {
   description: "The fair way to move.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${sora.variable} ${jakarta.variable}`}>
       <body className="font-jakarta">{children}</body>

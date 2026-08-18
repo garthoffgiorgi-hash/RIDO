@@ -14,8 +14,8 @@ export default function AboutPage() {
           <div className="eyebrow text-white/60">Why we built rido</div>
           <p className="mt-5 font-sora text-[26px] font-bold leading-[1.35] tracking-tight text-white sm:text-[32px] sm:leading-[1.32]">
             A ride can be cheaper for you <span className="text-signal">and</span> fairer to your
-            driver at the same time. The only thing standing in the way is how much the middle
-            takes — so we took less.
+            driver at the same time. The only thing standing in the way is how much the middle takes
+            — so we took less.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Button href="/login" variant="accent" size="lg">
@@ -35,10 +35,9 @@ export default function AboutPage() {
           Launching at UC San Diego.
         </h2>
         <p className="text-base leading-relaxed text-slate">
-          We&apos;re starting small and close to home: a {pilotMonths}-month pilot around UCSD
-          and San Diego, with $0 flat driver fees for the whole run. Commission still applies —
-          we wanted the graduated structure proven with real drivers before it goes anywhere
-          else.
+          We&apos;re starting small and close to home: a {pilotMonths}-month pilot around UCSD and
+          San Diego, with $0 flat driver fees for the whole run. Commission still applies — we
+          wanted the graduated structure proven with real drivers before it goes anywhere else.
         </p>
       </section>
 
@@ -50,15 +49,17 @@ export default function AboutPage() {
             Graduated, transparent, published.
           </h2>
           <p className="mb-9 max-w-[560px] text-base leading-relaxed text-slate">
-            Like tax brackets — each band&apos;s rate applies only to the fares within it. No
-            hidden math.
+            Like tax brackets — each band&apos;s rate applies only to the fares within it. No hidden
+            math.
           </p>
           <div className="grid gap-5 md:grid-cols-3">
             {commissionTiers.map((tier, i) => {
               const isTopTier = i === commissionTiers.length - 1;
               return (
                 <Card key={tier.band} tone={isTopTier ? "midnight" : "ivory"}>
-                  <div className={`eyebrow mb-2.5 ${isTopTier ? "text-white/65" : ""}`}>{tier.band}</div>
+                  <div className={`eyebrow mb-2.5 ${isTopTier ? "text-white/65" : ""}`}>
+                    {tier.band}
+                  </div>
                   <div
                     className={`tabular font-sora text-[40px] font-extrabold sm:text-[44px] ${
                       isTopTier ? "text-white" : "text-midnight"
@@ -94,7 +95,10 @@ export default function AboutPage() {
               <Mail size={20} strokeWidth={2} />
             </span>
             <div className="mb-1 text-[15px] font-semibold text-ink">General</div>
-            <a href={`mailto:${contact.general}`} className="text-sm text-signal no-underline hover:text-midnight">
+            <a
+              href={`mailto:${contact.general}`}
+              className="text-sm text-signal no-underline hover:text-midnight"
+            >
               {contact.general}
             </a>
           </Card>
@@ -103,7 +107,10 @@ export default function AboutPage() {
               <Newspaper size={20} strokeWidth={2} />
             </span>
             <div className="mb-1 text-[15px] font-semibold text-ink">Press</div>
-            <a href={`mailto:${contact.press}`} className="text-sm text-signal no-underline hover:text-midnight">
+            <a
+              href={`mailto:${contact.press}`}
+              className="text-sm text-signal no-underline hover:text-midnight"
+            >
               {contact.press}
             </a>
           </Card>

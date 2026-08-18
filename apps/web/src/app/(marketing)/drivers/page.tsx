@@ -1,4 +1,14 @@
-import { CarFront, FileCheck, HandCoins, IdCard, Power, Quote, SearchCheck, ShieldCheck, TrendingUp } from "lucide-react";
+import {
+  CarFront,
+  FileCheck,
+  HandCoins,
+  IdCard,
+  Power,
+  Quote,
+  SearchCheck,
+  ShieldCheck,
+  TrendingUp,
+} from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -50,12 +60,12 @@ export default function DriverLandingPage() {
           <Badge tone="accent">$0 driver fees for the first {pilotMonths} months</Badge>
         </div>
         <h1 className="max-w-[780px] font-sora text-[38px] font-extrabold leading-[1.08] tracking-tight text-midnight sm:text-[46px] lg:text-[54px] lg:leading-[1.05]">
-          Keep <span className="text-signal">{commissionWorkedExample.monthlyAdvantage}</span>{" "}
-          more of what you earn, every month.
+          Keep <span className="text-signal">{commissionWorkedExample.monthlyAdvantage}</span> more
+          of what you earn, every month.
         </h1>
         <p className="mt-5 max-w-[560px] text-lg leading-relaxed text-slate">
-          Incumbents take a flat, opaque cut that runs {incumbentEffectiveTakeRange}. Ours drops
-          as you drive — 20%, then 12%, then just 8%.
+          Incumbents take a flat, opaque cut that runs {incumbentEffectiveTakeRange}. Ours drops as
+          you drive — 20%, then 12%, then just 8%.
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button href="/signup" size="lg">
@@ -109,13 +119,13 @@ export default function DriverLandingPage() {
                 <TrendingUp size={17} strokeWidth={2} />
               </span>
               <span className="text-[13.5px] text-midnight">
-                That&apos;s <b>{commissionWorkedExample.monthlyAdvantage}</b> more in your pocket
-                — every single month.
+                That&apos;s <b>{commissionWorkedExample.monthlyAdvantage}</b> more in your pocket —
+                every single month.
               </span>
             </div>
             <p className="mt-3 text-[12px] text-slate">
-              Illustrative example at {commissionWorkedExample.monthlyGmv}/mo in fares, vs. a
-              flat {commissionWorkedExample.incumbentFlatRate} incumbent cut — see
+              Illustrative example at {commissionWorkedExample.monthlyGmv}/mo in fares, vs. a flat{" "}
+              {commissionWorkedExample.incumbentFlatRate} incumbent cut — see
               docs/business/monetization.md for the worked math.
             </p>
           </Card>
@@ -188,7 +198,9 @@ export default function DriverLandingPage() {
             </Card>
           ))}
         </div>
-        <p className="mt-4 text-xs text-slate">Illustrative quotes from pilot conversations; not verbatim reviews.</p>
+        <p className="mt-4 text-xs text-slate">
+          Illustrative quotes from pilot conversations; not verbatim reviews.
+        </p>
       </section>
 
       {/* CTA */}
@@ -227,7 +239,9 @@ function EconomicsBar({
     <div>
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-[15px] font-semibold text-ink">{label}</span>
-        <span className={`tabular font-sora text-[15px] font-bold ${accentClassName}`}>{keptLabel}</span>
+        <span className={`tabular font-sora text-[15px] font-bold ${accentClassName}`}>
+          {keptLabel}
+        </span>
       </div>
       <div className="relative h-8 overflow-hidden rounded-pill border border-mist bg-ivory">
         <div

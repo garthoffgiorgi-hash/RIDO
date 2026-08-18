@@ -311,7 +311,7 @@ function LoginForm() {
                 />
               ) : null}
 
-              {error ?? linkError ? (
+              {(error ?? linkError) ? (
                 <p role="alert" className="text-[13px] text-danger">
                   {error ?? linkError}
                 </p>
@@ -341,7 +341,10 @@ function LoginForm() {
 
         <p className="mt-6 text-center text-sm text-slate">
           New to rido?{" "}
-          <Link href="/signup" className="font-semibold text-signal no-underline hover:text-midnight">
+          <Link
+            href="/signup"
+            className="font-semibold text-signal no-underline hover:text-midnight"
+          >
             Create an account
           </Link>
           .

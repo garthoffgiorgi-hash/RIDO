@@ -7,8 +7,7 @@ interface BadgeProps {
 
 /** Small pill label — badges like "Now live in San Diego". Radius 999px per design-system.md. */
 export function Badge({ tone = "accent", children }: BadgeProps) {
-  const toneClasses =
-    tone === "accent" ? "bg-signal/8 text-signal" : "bg-ink/5 text-slate";
+  const toneClasses = tone === "accent" ? "bg-signal/8 text-signal" : "bg-ink/5 text-slate";
 
   return (
     <span

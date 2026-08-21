@@ -4,13 +4,14 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-18** (branch `claude/intelligent-fermat-2xkydc`, PR #10)
+**Last verified: 2026-08-21** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
-The **scaffolding, context system, marketing surface, and auth are built and connected to a real
-Supabase project.** The **product is not.** There is still no database schema, no payments, no
-maps, and no implemented pricing math.
+The **scaffolding, context system, marketing surface, auth, and database schema are built.**
+The schema is verified against a real Postgres (constraints, triggers, and RLS all exercised,
+`pg_prove` green) but **not yet applied to the live Supabase project** — that's a manual step.
+The **product itself is not built.** No payments, no maps, no implemented pricing math.
 
 ## What exists (verified, not assumed)
 
@@ -28,14 +29,17 @@ maps, and no implemented pricing math.
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | Typed stubs and a verified cross-runtime import path. **Every function throws `not implemented`. Zero tests.** |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project created and live**, auth confirmed working end to end. No migrations, no RLS, no functions — the five tables and `commission_tiers` seed still only exist as SQL, not as an applied schema. |
+| Supabase | **Project created and live**, auth confirmed working end to end. **Schema written and verified** — nine migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats` functions), RLS on every table, four pgTAP tests plus a standalone concurrency proof, all passing against a real local Postgres. **Not yet pushed to the live project.** `database.types.ts` still needs regenerating once it is. |
 
 ## What does not exist
 
-Migrations applied to the live project · RLS policies · `complete-ride` Edge Function ·
-`bump_monthly_stats` trigger · any implemented commission math · any test in `packages/pricing` ·
-Stripe (subscriptions or Connect) · Mapbox · `database.types.ts` (still an empty placeholder) ·
-a rider/driver role distinction · rider booking flow · driver app · compliance enforcement.
+Migrations applied to the *live* project (they exist and are verified, just not pushed yet) ·
+`complete-ride` Edge Function (the DB side — `reserve_driver_month`, the rollup trigger — is
+built; the function that calls `@rido/pricing` and orchestrates them is not) · any implemented
+commission math · any test in `packages/pricing` · Stripe (subscriptions or Connect) · Mapbox ·
+`database.types.ts` regenerated against the real schema (still the empty placeholder) · a
+rider/driver role distinction · rider booking flow (which is also why `rides` has no
+`authenticated` write policy yet — nothing to write it against) · driver app.
 
 ## Build order
 
@@ -53,17 +57,25 @@ Supabase's default (a link with no code, and not routed through `/auth/confirm`)
 `{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=...` pattern in `apps/web/CLAUDE.md`; custom
 SMTP (the built-in sender only reaches the project's own team addresses); an SMS provider for
 phone. Non-blocking — deferred, not forgotten.
-⬜ **Five tables as migrations** (`drivers`, `riders`, `rides`, `commission_tiers`,
-`monthly_driver_stats` per `docs/architecture/`). ⬜ Seed `commission_tiers` (SQL already
-written). ⬜ Generate `database.types.ts` (currently an empty `interface Database {}`, so the
-Supabase clients' generics are decorative until it's real). ⬜ Add a `role` (or equivalent) so a
-`drivers`/`riders` row exists per account — nothing distinguishes them yet, which is why every
-post-login redirect currently goes to `/account` instead of splitting.
+✅ **Five tables as migrations** — `drivers`, `subscriptions`, `rides`, `driver_monthly_stats`,
+`commission_tiers` (no `riders` table — `rides.rider_id` references `auth.users` directly).
+Verified against a real local Postgres: every constraint, trigger, and RLS policy exercised and
+passing (`supabase/tests/`, `pg_prove` green), including a standalone proof that the
+month-to-date lock actually blocks a concurrent completion rather than racing.
+⬜ **Push to the live project** (`supabase link` + `supabase db push`, then apply the seed —
+`db push` doesn't seed) and **regenerate `database.types.ts`** against it — currently an empty
+`interface Database {}`, so the Supabase clients' generics are decorative until this runs.
+⬜ Add a `role` (or equivalent) so a `drivers` row is linked to an account with a rider/driver
+distinction — nothing marks that yet, which is why every post-login redirect currently goes to
+`/account` instead of splitting.
 
 **Phase 2 — money spine.** ⬜ Implement `packages/pricing` with boundary tests at every tier edge
 (`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`, `$3,000.00`, `$3,000.01`), spanning
-rides, monotonicity, and exact `commission + payout === fare`. ⬜ `complete-ride` Edge Function +
-`bump_monthly_stats` trigger. ⬜ Stripe. ⬜ Retire the hand-computed marketing percentage in
+rides, monotonicity, and exact `commission + payout === fare`. ✅ `bump_monthly_stats` trigger
+and `reserve_driver_month` locking (DB side, verified). ⬜ The `complete-ride` Edge Function
+itself — orchestrates `reserve_driver_month` → `@rido/pricing` → the `rides` snapshot inside one
+transaction (must hold one connection open across all three; see `ride-completion.md`).
+⬜ Stripe. ⬜ Retire the hand-computed marketing percentage in
 `business/monetization.md` in favour of one derived from `packages/pricing` — and re-point
 `mock-data.ts`'s figures at it.
 
@@ -71,9 +83,10 @@ rides, monotonicity, and exact `commission + payout === fare`. ⬜ `complete-rid
 up front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier
 progress). ⬜ Mapbox.
 
-**Phase 4 — compliance gates.** ⬜ Driver activation gated on background check + vehicle
-inspection, enforced in the database (constraint + RLS), not just the app. ⬜ CPUC fee and
-airport surcharges as first-class line items.
+**Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
+inspection, enforced in the database (a `CHECK` constraint plus RLS) — not yet in the app, since
+there's no driver-facing surface that would trigger it yet. ⬜ CPUC fee and airport surcharges as
+first-class line items — no schema exists for either.
 
 ## Two definitions of "prototype"
 

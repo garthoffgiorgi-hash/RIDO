@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test": "if find src -name '*.test.ts' -print -quit | grep -q .; then find src -name '*.test.ts' -print0 | xargs -0 node --test --experimental-strip-types; else echo 'No src/**/*.test.ts files yet - nothing to run.'; fi",
     "start": "next start"
   },
   "dependencies": {

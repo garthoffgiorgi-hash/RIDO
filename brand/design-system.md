@@ -98,7 +98,7 @@ Two cases, two jobs, one constant accent.
 
 ## 5. Voice in the UI (so copy matches design)
 - Plain verbs, sentence case, active. Buttons name exactly what happens ("Get a rido," not "Submit"); the name stays consistent through the flow.
-- Say what a thing does, not how it's built. "Driver keeps 87%," not "payout engine."
+- Say what a thing does, not how it's built. "Driver keeps ~86%," not "payout engine."
 - Irreverence points *outward* (at incumbents, in marketing); warmth + steadiness point *inward* (at rider/driver, in product — getting in a car at night needs reassurance, not jokes).
 - Empty/error/loading states give direction, not mood.
 

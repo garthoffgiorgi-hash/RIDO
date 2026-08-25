@@ -41,6 +41,7 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` today, `rides/`, `stripe/`, `maps/` to come |
+| `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
 | `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
 
@@ -100,9 +101,13 @@ sign-out), `errors.ts` (vendor error → RIDO voice), `result.ts` (`AuthResult`)
   from `@rido/pricing`. Never from arithmetic inline in JSX.
 - The driver-facing **"you keep $X.XX (Y%)"** figure is the product's core promise made visible.
   If it can't be sourced from a snapshot or the pricing package, **don't render a number.**
-- Marketing/aggregate percentages (e.g. "drivers keep X%" on a landing page) cite the one figure
-  in `docs/business/monetization.md` — never invent or recompute one per-component. That figure
-  is interim until Phase 2 computes it from `@rido/pricing` directly.
+- Marketing/aggregate percentages (e.g. "drivers keep X%" on a landing page) come from
+  `src/lib/marketing/figures.ts`, which derives every one of them by running `@rido/pricing` over
+  the seeded tiers at build time. **Never type a rate or a percentage into a page or into
+  `mock-data.ts`.** To change one, change `supabase/seed/commission_tiers.sql` and run
+  `npm run generate:tiers` — see `docs/business/changing-rates.md`.
+- `src/lib/mock-data.ts` is for genuinely illustrative copy — testimonials, requirements, contact.
+  A commission figure appearing there is a bug: it belongs in `src/lib/marketing/figures.ts`.
 - Copy follows `brand/brand-guide.md`: plain verbs, sentence case, active voice. Buttons name what
   happens ("Get a rido", not "Submit").
 - Marketing CTAs: "Get a rido" → `/login`, "Drive with rido" → `/drivers` — except **on**

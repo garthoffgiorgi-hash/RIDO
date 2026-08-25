@@ -18,9 +18,14 @@
 
 ## Published driver-keeps figure
 
-**Use ~86% (86.4% precisely), commission-only, until `packages/pricing` computes it directly.**
-Reusing the worked example above ($3,600 GMV/driver-mo → driver keeps $3,112) rather than a new
-number, so the marketing figure and the worked example can never quietly disagree.
+**~86%, commission-only — and it is now computed, not maintained here.**
+`apps/web/src/lib/marketing/figures.ts` derives it by running the real `commissionForRide` over
+the seeded tiers, at the $3,600 GMV/driver-mo basis above. The worked example in this file and the
+figure on the website therefore cannot disagree: both come out of the same code, and CI fails if
+the generated tiers drift from `supabase/seed/commission_tiers.sql`.
+
+The numbers in this section are kept as the *published basis and caveats*. If a repricing changes
+them, `apps/web/src/lib/marketing/figures.test.ts` fails first — update both together.
 
 - **Basis: commission-only, no flat fee.** Matches the pilot state today (ADR-0003: fee is $0
   during the pilot) — so this is also the *launch-accurate* number, not an aspirational one.

@@ -11,12 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FareChip } from "@/components/ui/FareChip";
-import {
-  driverKeepsPct,
-  incumbentEffectiveTakeRange,
-  launchCity,
-  pilotMonths,
-} from "@/lib/mock-data";
+import { driverKeepsPct } from "@/lib/marketing/figures";
+import { incumbentEffectiveTake, launchCity, pilotMonths } from "@/lib/mock-data";
 
 const HOW_IT_WORKS = [
   {
@@ -74,7 +70,7 @@ export default function RiderLandingPage() {
             />
             <Stat
               label="Incumbents take"
-              value={`up to ${incumbentEffectiveTakeRange.split("–")[1]}`}
+              value={`up to ${incumbentEffectiveTake.high}`}
               caption="in effective commission"
             />
             <Stat

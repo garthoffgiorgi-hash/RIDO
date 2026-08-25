@@ -1,12 +1,14 @@
 /**
- * The one home for every example number shown on the marketing pages. No backend exists yet
- * (root CLAUDE.md — "Ground truth"), so every fare, percentage, and commission figure below is
- * illustrative copy, not live data. Nothing here is computed — every figure is a direct citation
- * of a value already published in docs/, never a recomputation (root CLAUDE.md invariant #3 and
- * the "do not re-implement commission math" guardrail).
+ * Illustrative copy for the marketing pages — the things that are genuinely examples.
  *
- * Canonical source: docs/business/monetization.md. If a number here ever drifts from that file,
- * that file wins — fix this one.
+ * **Commission figures are NOT here.** They live in `marketing/figures.ts`, where they are
+ * computed from the seeded tiers by the same `@rido/pricing` code that charges real drivers. That
+ * split is the point: a number that describes our pricing must be derived, and a number that is
+ * illustrative must be obviously illustrative. Anything below is the second kind — a citation or
+ * a piece of copy, never a recomputation (root CLAUDE.md invariant #3).
+ *
+ * Canonical source for the cited figures: docs/business/. If a number here drifts from those
+ * files, they win — fix this one.
  */
 
 export const launchCity = "San Diego";
@@ -14,62 +16,21 @@ export const launchCity = "San Diego";
 /** ADR-0003: pilot waives the flat fee for this many months; commission still runs. */
 export const pilotMonths = 6;
 
-export const commissionTiers = [
-  {
-    band: "$0 – $1,000 / mo",
-    rate: "20%",
-    description: "Starting band, on your first $1,000 of fares each month.",
-  },
-  {
-    band: "$1,000 – $3,000 / mo",
-    rate: "12%",
-    description: "Middle band, on the next $2,000 of fares.",
-  },
-  {
-    band: "Above $3,000 / mo",
-    rate: "8%",
-    description: "Top band, on every dollar past $3,000.",
-  },
-] as const;
-
 /**
- * The published driver-keeps figure — docs/business/monetization.md, "Published driver-keeps
- * figure": ~86% (86.4% precisely), commission-only, basis is the $3,600 GMV/driver-mo worked
- * example below. Cite this figure; never recompute or retype a different one (apps/web/CLAUDE.md).
- */
-export const driverKeepsPct = "~86%";
-
-/**
- * The exact worked example from docs/business/monetization.md: "$3,600 GMV/driver-mo:
- * $1,000×20% + $2,000×12% + $600×8% = $488 (~13.6% blended). Driver keeps $3,112; an incumbent
- * at 30% would take $1,080" (so an incumbent driver keeps $3,600 − $1,080 = $2,520).
- * These are the only commission numbers used anywhere in the marketing pages — matched to the
- * dollar against the doc, never re-derived. Per the design handoff note
- * (brand/exports/2026-08-07-landing-pages-v1.md), the Driver page's original design computed
- * this live from arbitrary props in a component; that's dropped here in favor of this one fixed,
- * citable example, since the root CLAUDE.md guardrail forbids re-implementing commission math
- * (bracket arithmetic) anywhere outside packages/pricing, including in a component.
- */
-export const commissionWorkedExample = {
-  monthlyGmv: "$3,600",
-  ridoCommission: "$488",
-  ridoDriverKeeps: "$3,112",
-  ridoBlendedRate: "13.6%",
-  // Matches driverKeepsPct above: $3,112 / $3,600 = 86.4%.
-  ridoKeepPct: "86%",
-  incumbentFlatRate: "30%",
-  incumbentDriverKeeps: "$2,520",
-  incumbentKeepPct: "70%",
-  monthlyAdvantage: "$592",
-} as const;
-
-/**
- * Incumbents' *effective* take (distinct from the 30% comparison baseline above, which
- * monetization.md itself uses as a conservative flat-rate comparison). Source: docs/business/
- * overview.md / docs/business/market-viability.md — "nominally ~25%, but effectively ~35–50%"
+ * Incumbents' *effective* take — distinct from the flat 30% comparison baseline used in the
+ * worked example, which monetization.md picks as a deliberately conservative comparison. Source:
+ * docs/business/overview.md and market-viability.md — "nominally ~25%, but effectively ~35–50%"
  * since 2022 upfront pricing decoupled rider price from driver pay.
+ *
+ * A cited range about someone else's pricing, so it stays a literal. Split into parts rather than
+ * one string: the home page needs only the upper bound, and it used to recover it by splitting on
+ * the en-dash — one keystroke away from breaking silently.
  */
-export const incumbentEffectiveTakeRange = "35–50%";
+export const incumbentEffectiveTake = {
+  low: "35%",
+  high: "50%",
+  range: "35–50%",
+} as const;
 
 export const driverRequirements = [
   { icon: "id-card", label: "21+ with a valid license" },

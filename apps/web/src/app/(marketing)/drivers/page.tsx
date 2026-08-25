@@ -15,9 +15,13 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
   commissionWorkedExample,
+  tierProseSentence,
+  tierProseShort,
+} from "@/lib/marketing/figures";
+import {
   driverRequirements,
   driverTestimonials,
-  incumbentEffectiveTakeRange,
+  incumbentEffectiveTake,
   pilotMonths,
 } from "@/lib/mock-data";
 
@@ -64,8 +68,8 @@ export default function DriverLandingPage() {
           of what you earn, every month.
         </h1>
         <p className="mt-5 max-w-[560px] text-lg leading-relaxed text-slate">
-          Incumbents take a flat, opaque cut that runs {incumbentEffectiveTakeRange}. Ours drops as
-          you drive — 20%, then 12%, then just 8%.
+          Incumbents take a flat, opaque cut that runs {incumbentEffectiveTake.range}. Ours drops as
+          you drive — {tierProseShort}.
         </p>
         <div className="mt-7 flex flex-wrap gap-3">
           <Button href="/signup" size="lg">
@@ -86,8 +90,7 @@ export default function DriverLandingPage() {
               Our commission falls as you drive more.
             </h2>
             <p className="max-w-[450px] text-base leading-relaxed text-slate">
-              20% on your first $1,000 of fares each month, 12% on the next $2,000, then just 8%
-              above $3,000. No flat fee during the launch pilot.
+              {tierProseSentence} No flat fee during the launch pilot.
             </p>
           </div>
 

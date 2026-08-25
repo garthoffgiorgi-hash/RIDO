@@ -45,9 +45,14 @@ one's lower bound, and the top band's `upper_bound_cents` is `null` (meaning unb
 overwriting. Insert the new bands with a later `effective_from` and deactivate the old ones — the
 previous pricing stays on the record.
 
-> ⚠️ **Not wired up yet.** Nothing currently reads `effective_from` — the query that would select
-> "the tiers in effect right now" belongs to the `complete-ride` Edge Function, which isn't built.
-> Until it is, treat the `active = true` rows as the live set and change them in place.
+`active_commission_tiers()` is what reads them: it returns the bands where `active` is true and
+`effective_from` has arrived, with the day boundary in `America/Los_Angeles`. `complete-ride` rates
+every ride against that set, so a dated change takes effect on its date without a deploy.
+
+> ⚠️ One thing still to decide when you first schedule a *future-dated* change: the marketing-copy
+> generator quotes one set of bands and refuses to guess between two. It will fail with a message
+> saying so — that's the prompt to decide whether the site should advertise the current rates or
+> the coming ones.
 
 ## Changing the flat fee
 
@@ -78,16 +83,22 @@ top of it to match your new seed, then recompute the worked examples in that fil
 in the package tests properties that hold for any rates, and should keep passing untouched — if one
 of those fails, the change broke the math rather than just the pricing.
 
-**2. The marketing copy quotes the old numbers.** Currently hand-maintained in:
+**2. The website's numbers regenerate — with one command.**
+Run `npm run generate:tiers`. It re-reads `supabase/seed/commission_tiers.sql` and rewrites
+`../../apps/web/src/lib/marketing/published-tiers.generated.ts`; every figure on every marketing
+page is then derived from it by `../../apps/web/src/lib/marketing/figures.ts`, which runs the real
+`commissionForRide` — the band table, the "drivers keep ~86%", both tier sentences on the drivers
+page, and the comparison bars. **Don't edit any of those by hand.** CI runs the generator with
+`--check` and fails the build if the seed and the generated file disagree.
 
-- `monetization.md` — the tier table and the published "drivers keep ~86%" figure
-- `../../apps/web/src/lib/mock-data.ts` — `commissionTiers`, `driverKeepsPct`, the worked example
-- `../../apps/web/src/app/(marketing)/drivers/page.tsx` — one sentence spelling the rates out
+`../../apps/web/src/lib/marketing/figures.test.ts` will then fail, on purpose, the same way the
+pricing package's pinned test does — it holds the strings the pages render. Update it to the new
+figures, and update this file's sibling `monetization.md` with the same worked example.
+
+Two places still quote a percentage in prose and are not generated:
+
+- `monetization.md` — the worked example and the published-figure caveats
 - `../../brand/brand-guide.md` and `../../brand/design-system.md` — voice examples using a percentage
-
-Making these derive from `@rido/pricing` instead of being retyped is tracked in `../roadmap.md`
-(Phase 2). Until that lands, they're a manual step and easy to miss — which is the main reason this
-page exists.
 
 ## Checklist
 
@@ -95,6 +106,8 @@ page exists.
 - [ ] Update `supabase/seed/commission_tiers.sql` so a fresh database gets the same values.
 - [ ] Update `SEED_TIERS` and the worked examples in `commission.seed.test.ts`; run
       `npm test --workspace=packages/pricing`.
-- [ ] Update the marketing copy listed above.
+- [ ] Run `npm run generate:tiers`, then update the strings in
+      `../../apps/web/src/lib/marketing/figures.test.ts`; run `npm test --workspace=apps/web`.
+- [ ] Update the prose in `monetization.md` and the two `brand/` voice examples.
 - [ ] If the *rule* changed rather than the numbers — bracketed vs. something else — that needs a
       new ADR, not just a row edit. See `../CLAUDE.md`.

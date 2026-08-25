@@ -16,6 +16,10 @@ jobs:
         with:
           node-version: "22.6.0"
       - run: npm run check:context
+      # The marketing site's rates are generated from supabase/seed/commission_tiers.sql. This
+      # fails the build if the seed changed and the generated file wasn't regenerated — i.e. if
+      # the database and the website would disagree about what RIDO charges. No install needed.
+      - run: npm run check:tiers
 
   lint:
     name: Lint + format (Biome)
@@ -66,19 +70,22 @@ jobs:
       - run: npm run check:pricing:deno
       - run: npm run test:pricing:deno
 
-  functions-node:
-    name: Edge Function logic (Node)
+  unit-node:
+    name: Unit tests needing node_modules (Edge Function + web lib)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22.6.0"
-      # Unlike pricing-node, this one needs `npm ci`: complete-ride/core.ts imports
-      # "@rido/pricing" by package name, which Node resolves through the workspace symlink in
-      # node_modules. Deno resolves the same specifier through supabase/functions/deno.json.
+      # Unlike pricing-node, these need `npm ci`: both suites import "@rido/pricing" by package
+      # name, which Node resolves through the workspace symlink in node_modules. (Deno resolves
+      # the same specifier through supabase/functions/deno.json, which is why the Deno job
+      # doesn't install anything.) One install, both suites.
       - run: npm ci
       - run: npm run test:functions
+      # apps/web's pure lib logic — ADR-0007's "pure logic in src/lib/ ships with tests".
+      - run: npm test --workspace=apps/web
 
   functions-deno:
     name: Edge Function (Deno — the runtime it actually runs on)

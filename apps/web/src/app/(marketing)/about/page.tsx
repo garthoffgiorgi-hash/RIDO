@@ -1,7 +1,8 @@
 import { Mail, MapPin, Newspaper } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { commissionTiers, commissionWorkedExample, contact, pilotMonths } from "@/lib/mock-data";
+import { commissionTiers, commissionWorkedExample } from "@/lib/marketing/figures";
+import { contact, pilotMonths } from "@/lib/mock-data";
 
 // Placeholder — about/mission page (Design→Code handoff, brand/exports/2026-08-07-landing-pages-v1/).
 // Mission copy source: docs/business/overview.md's wedge + mission sections.

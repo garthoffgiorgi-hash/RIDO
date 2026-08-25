@@ -11,6 +11,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 |---|---|
 | Commission rates, tier bands, bracketed-vs-cliff | `decisions/0002-bracketed-per-ride-commission.md`; **runtime values** live in `supabase/seed/commission_tiers.sql` |
 | How to reprice — change a rate, a band, or the flat fee | `business/changing-rates.md` |
+| The marketing site's rates and the "~86%" figure | **derived** — `apps/web/src/lib/marketing/figures.ts`, generated from the seed. Never retyped |
 | Flat fee amount, pilot waiver, fee turn-on trigger | `decisions/0003-pilot-fee-waiver.md` + `business/monetization.md` |
 | Why hybrid (fee + commission) rather than pure subscription | `decisions/0001-hybrid-monetization.md` |
 | Database schema, columns, constraints | `architecture/data-model.md` — **superseded by `supabase/migrations/` once they exist** |

@@ -88,10 +88,12 @@ from compare-and-swap instead (**ADR-0008**). Proved by a two-connection race
 test fails if the check is removed.
 ⬜ Deploy it (`supabase functions deploy complete-ride --use-api`) and exercise it against the
 live project. Nothing creates a ride yet, so this needs a hand-inserted row.
-⬜ Stripe. ⬜ Retire the hand-computed marketing percentage in
-`business/monetization.md` in favour of one derived from `packages/pricing` — and re-point
-`mock-data.ts`'s figures at it. Also the tier prose hardcoded in `(marketing)/drivers/page.tsx`,
-and the "Drivers keep 87%" in `../brand/` which already contradicts the canonical ~86%.
+✅ **The marketing percentage is derived**, not hand-maintained: `supabase/seed/commission_tiers.sql`
+→ `scripts/generate-published-tiers.mjs` → `apps/web/src/lib/marketing/figures.ts` →
+`commissionForRide`. Verified by repricing the seed and watching every page figure move, including
+the CSS bar widths. CI fails if the generated file drifts from the seed. The two hardcoded tier
+sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../brand/` are gone.
+⬜ Stripe.
 ⬜ Retire `gradComm()` in `tools/pilot-model` — a second commission implementation in
 floating-point dollars, with the pilot derived from a month index (the date comparison ADR-0003
 forbids). ADR-0005 says it should import `@rido/pricing`.

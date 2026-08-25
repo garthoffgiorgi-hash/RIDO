@@ -1,7 +1,7 @@
 -- Required assertion #4 (supabase/CLAUDE.md): bump_monthly_stats correctness. This file proves
 -- the arithmetic — two sequential completions roll up correctly. It does NOT prove concurrency
 -- safety: pg_prove runs one connection at a time, so it structurally cannot exercise two
--- transactions racing each other. That proof is supabase/tests/concurrent-completion.mjs, a
+-- transactions racing each other. That proof is supabase/tests/concurrent-completion.sh, a
 -- standalone two-connection script outside the pgTAP suite.
 begin;
 select plan(5);

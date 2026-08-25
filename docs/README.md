@@ -15,6 +15,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Why hybrid (fee + commission) rather than pure subscription | `decisions/0001-hybrid-monetization.md` |
 | Database schema, columns, constraints | `architecture/data-model.md` — **superseded by `supabase/migrations/` once they exist** |
 | Ride completion flow, snapshotting, the MTD trigger | `architecture/ride-completion.md` |
+| Why completion is compare-and-swap, and where heavy computation may not run | `decisions/0008-completion-is-a-bounded-critical-section.md` |
 | Supabase Auth dashboard config (email templates, SMTP, SMS, redirect allowlist) | `architecture/auth-setup.md` |
 | Where money math lives and how it's shared across runtimes | `decisions/0005-monorepo-shaped-layout.md` |
 | Why vendor SDKs are wrapped rather than called from components | `decisions/0006-vendor-sdks-behind-app-modules.md` |

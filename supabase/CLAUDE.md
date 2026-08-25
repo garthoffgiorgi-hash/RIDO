@@ -55,14 +55,27 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   `supabase/functions/deno.json` maps that specifier to `packages/pricing/src/index.ts` — one
   shared alias for every function, verified to resolve, run, and bundle under Deno (ADR-0005).
   Write `import { commissionForRide } from "@rido/pricing"`, not a `../../../` relative path.
-- `complete-ride` is the critical path, in this order: read MTD `gross_fare_cents` from
-  `driver_monthly_stats` → compute the bracketed commission for *this* ride against that position
-  → snapshot `commission_rate_bps` / `commission_cents` / `driver_payout_cents` onto `rides` →
-  mark the ride `completed`. The `bump_monthly_stats` trigger then updates MTD atomically, so the
-  next ride reads a correct position without a race.
-- **Never trust a `fare_cents` sent by a client.** Verify it server-side against the quoted fare.
+- `complete-ride` is the critical path: read the active tiers and the driver's MTD position →
+  rate the ride with `@rido/pricing` → hand the result to `apply_ride_commission`, which locks,
+  re-checks the MTD position, and writes. The snapshot and `status = 'completed'` are **one
+  UPDATE**, because `rides_commission_present_iff_completed` won't accept them as two. Full flow
+  and the concurrency argument: `docs/architecture/ride-completion.md` (ADR-0008).
+- **The transaction belongs in SQL, not the function.** supabase-js auto-commits every call, so a
+  lock taken from Deno is released before the commission is computed. Correctness comes from
+  compare-and-swap: the caller passes back the MTD figure it rated against, and
+  `apply_ride_commission` refuses if it moved. Retry on `conflict`; nothing is written until the
+  check passes.
+- **Nothing goes between the lock and COMMIT** but the MTD re-read, the comparison and the UPDATE.
+  A function with a 2s CPU cap holding a per-driver month lock is not where optimization runs.
+- **Split each function into a pure core and a thin shell.** `core.ts` (no SDK, no clock, no
+  HTTP) is what a future worker or batch simulation can reuse; `index.ts` owns the request. The
+  SDK is imported in exactly one file per function — ADR-0006's boundary, applied on Deno.
+- **Never trust a `fare_cents` sent by a client.** Read it from the `rides` row. The request names
+  a ride; it does not describe one.
 - Deploy with `--use-api` (no Docker required). The service-role key stays inside the function —
-  never in `deno.json`, which is committed and holds only the import alias.
+  never in `deno.json`, which is committed and holds only import aliases.
+- Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
+  function's row shapes stop being hand-written projections.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

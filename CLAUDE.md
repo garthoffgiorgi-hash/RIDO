@@ -6,12 +6,13 @@ logic is the most important code in this repo. Get it exactly right.**
 
 ## Ground truth
 
-**Built and working:** the Next.js app on the real brand, four marketing routes, and **auth** —
-a live Supabase project, sign-up and sign-in by email or phone, session refresh, route guards.
+**Built and working:** the Next.js app on the real brand, four marketing routes, **auth** (a live
+Supabase project, sign-up and sign-in by email or phone, session refresh, route guards), the
+**database** (schema applied, RLS and constraints tested against a real Postgres), **all
+commission math** in `packages/pricing`, and the **`complete-ride` Edge Function** that joins
+them.
 
-**Not built:** the database (no migrations applied, so `database.types.ts` is still an empty
-placeholder and every Supabase generic is decorative), **all commission math** (`packages/pricing`
-throws `not implemented`), payments, maps, the rider booking flow, the driver app, and any
+**Not built:** payments (Stripe), maps (Mapbox), the rider booking flow, the driver app, and any
 rider/driver distinction — which is why every post-login redirect goes to `/account`.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the

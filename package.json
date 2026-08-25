@@ -20,6 +20,9 @@
     "test": "npm run test --workspaces --if-present",
     "test:pricing:deno": "if find packages/pricing/src -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check packages/pricing/src/; else echo 'No packages/pricing/src/*.test.ts files yet - nothing to run.'; fi",
     "check:pricing:deno": "deno check packages/pricing/src/index.ts",
+    "test:functions": "find supabase/functions -name '*.test.ts' -print0 | xargs -0 --no-run-if-empty node --test --experimental-strip-types",
+    "test:functions:deno": "if find supabase/functions -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check supabase/functions/; else echo 'No supabase/functions/**/*.test.ts files yet - nothing to run.'; fi",
+    "check:functions:deno": "deno check supabase/functions/complete-ride/index.ts",
     "types:generate": "supabase gen types typescript --local > apps/web/src/types/database.types.ts"
   },
   "devDependencies": {

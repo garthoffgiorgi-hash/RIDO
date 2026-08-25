@@ -65,3 +65,40 @@ jobs:
       # adding an install step will fail here while passing on your machine.
       - run: npm run check:pricing:deno
       - run: npm run test:pricing:deno
+
+  functions-node:
+    name: Edge Function logic (Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      # Unlike pricing-node, this one needs `npm ci`: complete-ride/core.ts imports
+      # "@rido/pricing" by package name, which Node resolves through the workspace symlink in
+      # node_modules. Deno resolves the same specifier through supabase/functions/deno.json.
+      - run: npm ci
+      - run: npm run test:functions
+
+  functions-deno:
+    name: Edge Function (Deno — the runtime it actually runs on)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # check — type-checks the deployed entry point under Deno's own resolution, including the
+      #         real @supabase/supabase-js. This is what catches an Edge Function that would
+      #         fail on deploy rather than in review.
+      # test  — runs the pure core (core.test.ts) on the runtime that will execute it, so the
+      #         authorization rule and the pricing call are proven where they'll run, not only
+      #         under Node.
+      #
+      # --no-check on `test` for the same reason as pricing-deno: the test files import
+      # node:test / node:assert, and type-checking those needs @types/node from node_modules,
+      # which this job has no reason to install. The shipped source is fully type-checked by the
+      # step above. Removing --no-check without adding an install step fails here and passes
+      # locally.
+      - run: npm run check:functions:deno
+      - run: npm run test:functions:deno

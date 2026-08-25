@@ -39,7 +39,7 @@ jobs:
         with:
           node-version: "22.6.0"
       # packages/pricing is dependency-free by design (packages/pricing/CLAUDE.md) — no install
-      # step needed. The test script itself no-ops cleanly until Phase 2 adds *.test.ts files.
+      # step needed. Node runs the .ts files directly via --experimental-strip-types.
       - run: npm test --workspace=packages/pricing
 
   pricing-deno:
@@ -50,7 +50,18 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      # Type-checks under Deno's own resolution rules regardless of whether tests exist yet —
-      # this is what actually proves the module Edge Functions import stays Deno-compatible.
+      # Two distinct guarantees, and neither needs an install — which is itself an assertion that
+      # the package is genuinely dependency-free:
+      #
+      #   check — type-checks the SHIPPED SOURCE under Deno's own resolution rules. This is what
+      #           proves the module Edge Functions import stays Deno-compatible.
+      #   test  — proves Deno and Node compute the same numbers (ADR-0005), the one failure mode
+      #           that would silently break the books.
+      #
+      # `test` passes --no-check deliberately. The test files import node:test / node:assert,
+      # and type-checking those requires @types/node from node_modules, which this job has no
+      # reason to install. The source is still fully type-checked by the step above, and the
+      # tests are type-checked locally, where node_modules exists. Removing --no-check without
+      # adding an install step will fail here while passing on your machine.
       - run: npm run check:pricing:deno
       - run: npm run test:pricing:deno

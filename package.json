@@ -18,7 +18,7 @@
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
     "test": "npm run test --workspaces --if-present",
-    "test:pricing:deno": "if find packages/pricing/src -name '*.test.ts' -print -quit | grep -q .; then deno test packages/pricing/src/; else echo 'No packages/pricing/src/*.test.ts files yet - nothing to run.'; fi",
+    "test:pricing:deno": "if find packages/pricing/src -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check packages/pricing/src/; else echo 'No packages/pricing/src/*.test.ts files yet - nothing to run.'; fi",
     "check:pricing:deno": "deno check packages/pricing/src/index.ts",
     "types:generate": "supabase gen types typescript --local > apps/web/src/types/database.types.ts"
   },

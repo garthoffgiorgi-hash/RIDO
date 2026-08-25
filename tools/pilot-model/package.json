@@ -1,0 +1,26 @@
+{
+  "name": "@rido/pilot-model",
+  "private": true,
+  "version": "0.0.0",
+  "description": "RIDO pilot economics model. A planning tool \u2014 it calls @rido/pricing, it never re-implements it.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "if find src -name '*.test.ts' -print -quit | grep -q .; then find src -name '*.test.ts' -print0 | xargs -0 node --test --experimental-strip-types; else echo 'No src/*.test.ts files yet - nothing to run.'; fi"
+  },
+  "dependencies": {
+    "@rido/pricing": "*",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "@vitejs/plugin-react": "6.1.0",
+    "typescript": "6.0.3",
+    "vite": "8.2.2"
+  }
+}

@@ -11,7 +11,10 @@
 // as a percentage, or taking its complement ("the driver keeps the rest"), needs the same
 // denominator this package divides by — and writing 10_000 at the call site would be a second
 // definition of the unit, which is exactly the drift this package exists to prevent.
-export { cents, bps, applyBps, BPS_DENOMINATOR } from "./money.ts";
+// roundHalfUpDiv is exported for the same reason as BPS_DENOMINATOR: a caller expressing one
+// integer amount as a proportion of another — a blended take rate over a month, say — should
+// round the way this package rounds, not invent a second convention with Math.round.
+export { cents, bps, applyBps, BPS_DENOMINATOR, roundHalfUpDiv } from "./money.ts";
 export type { Cents, Bps } from "./money.ts";
 
 export { normalizeTiers } from "./tiers.ts";

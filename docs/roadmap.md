@@ -20,13 +20,14 @@ screens, and nothing that creates a ride in the first place.
 |---|---|
 | Repo structure | Scoped `CLAUDE.md` per domain, ADRs, canonical-source map (`docs/README.md`) |
 | Drift guard | `scripts/check-context.mjs` — reference resolution, size budgets, ADR citations, pricing-literal leakage |
-| CI | `.github/workflows/ci.yml` — drift check + `packages/pricing` under **both** Node and Deno. Green. |
+| CI | `.github/workflows/ci.yml` — drift check, seed-vs-generated-tiers check, Biome, `packages/pricing` under **both** Node and Deno, the Edge Function under both, plus `apps/web` and `tools/pilot-model` lib tests. Green. |
 | `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
 | Marketing pages | `/`, `/drivers`, `/about` — **real UI**, built from `brand/exports/2026-08-07-landing-pages-v1.md` |
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
 | `/request` | Still a placeholder. Nothing links to it — rider flow not started. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
-| Mock data | `apps/web/src/lib/mock-data.ts` — every example figure lives here, not inline in components |
+| Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
+| `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 15 tests on `../tools/pilot-model/src/model.ts` |
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Bracketed commission, tier validation, flat-fee resolution. 55 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
@@ -94,9 +95,11 @@ live project. Nothing creates a ride yet, so this needs a hand-inserted row.
 the CSS bar widths. CI fails if the generated file drifts from the seed. The two hardcoded tier
 sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../brand/` are gone.
 ⬜ Stripe.
-⬜ Retire `gradComm()` in `tools/pilot-model` — a second commission implementation in
-floating-point dollars, with the pilot derived from a month index (the date comparison ADR-0003
-forbids). ADR-0005 says it should import `@rido/pricing`.
+✅ **`gradComm()` is retired.** `tools/pilot-model` is a real workspace (`npm run model`) that
+calls `@rido/pricing` instead of re-implementing bracketed commission in floating-point dollars.
+The flat fee now turns on at a driver-count threshold — the traction signal ADR-0003 describes —
+rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/model.ts` with 15 tests, and fixing a
+display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
 **Phase 3 — surfaces.** ✅ Marketing pages. ⬜ Rider request flow (map-first, bottom sheet, fare
 up front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier

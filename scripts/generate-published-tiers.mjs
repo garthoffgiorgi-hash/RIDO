@@ -26,7 +26,15 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SEED = resolve(ROOT, "supabase/seed/commission_tiers.sql");
-const OUT = resolve(ROOT, "apps/web/src/lib/marketing/published-tiers.generated.ts");
+/**
+ * Two consumers, one source. The marketing site quotes the rates; the pilot model starts its
+ * sliders at them. Both get a machine-written copy rather than importing across app boundaries,
+ * and `--check` verifies both, so neither can drift from the seed or from each other.
+ */
+const OUTPUTS = [
+  "apps/web/src/lib/marketing/published-tiers.generated.ts",
+  "tools/pilot-model/src/published-tiers.generated.ts",
+];
 const CHECK_ONLY = process.argv.includes("--check");
 
 const die = (message) => {
@@ -203,25 +211,31 @@ ${body}
 ];
 `;
 
-if (CHECK_ONLY) {
-  let existing = "";
-  try {
-    existing = readFileSync(OUT, "utf8");
-  } catch {
-    die(`${OUT} does not exist. Run \`npm run generate:tiers\`.`);
+for (const relativePath of OUTPUTS) {
+  const out = resolve(ROOT, relativePath);
+
+  if (CHECK_ONLY) {
+    let existing = "";
+    try {
+      existing = readFileSync(out, "utf8");
+    } catch {
+      die(`${relativePath} does not exist. Run \`npm run generate:tiers\`.`);
+    }
+    if (existing !== generated) {
+      die(
+        `${relativePath} is stale — the seed changed and this file would still quote the old ` +
+          "rates. Run `npm run generate:tiers` and commit the result.",
+      );
+    }
+    continue;
   }
-  if (existing !== generated) {
-    die(
-      "published-tiers.generated.ts is stale — the seed changed and the marketing copy would " +
-        "still quote the old rates. Run `npm run generate:tiers` and commit the result.",
-    );
-  }
-  console.log("✓ published tiers match the seed");
-  process.exit(0);
+
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, generated);
 }
 
-mkdirSync(dirname(OUT), { recursive: true });
-writeFileSync(OUT, generated);
 console.log(
-  `✓ wrote ${tiers.length} tiers to apps/web/src/lib/marketing/published-tiers.generated.ts`,
+  CHECK_ONLY
+    ? "✓ published tiers match the seed"
+    : `✓ wrote ${tiers.length} tiers to ${OUTPUTS.length} files`,
 );

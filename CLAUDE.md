@@ -36,7 +36,7 @@ payouts) · Mapbox.
 | `apps/web/` | The Next.js app | — has its own CLAUDE.md |
 | `packages/pricing/` | All money math. Pure, dependency-free | — has its own CLAUDE.md |
 | `supabase/` | Migrations, RLS, Edge Functions | — has its own CLAUDE.md |
-| `tools/` | Non-shipping tools (the pilot economics model) | Financial modelling |
+| `tools/` | Non-shipping tools. `npm run model` opens the pilot economics model — it *calls* `packages/pricing`, never its own math | Financial modelling |
 
 Those paths are backticked deliberately. Claude Code inlines a bare `@path` into **every** session
 at launch — imports don't save context, they spend it. Keep references backticked so they stay

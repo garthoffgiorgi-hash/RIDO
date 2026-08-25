@@ -2,10 +2,11 @@
   "name": "rido",
   "private": true,
   "version": "0.0.0",
-  "description": "RIDO — a driver-favorable rideshare marketplace.",
+  "description": "RIDO \u2014 a driver-favorable rideshare marketplace.",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "engines": {
     "node": ">=22.6.0"
@@ -19,6 +20,7 @@
     "format": "biome format --write .",
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
+    "model": "npm run dev --workspace=tools/pilot-model",
     "test": "npm run test --workspaces --if-present",
     "test:pricing:deno": "if find packages/pricing/src -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check packages/pricing/src/; else echo 'No packages/pricing/src/*.test.ts files yet - nothing to run.'; fi",
     "check:pricing:deno": "deno check packages/pricing/src/index.ts",

@@ -71,7 +71,7 @@ jobs:
       - run: npm run test:pricing:deno
 
   unit-node:
-    name: Unit tests needing node_modules (Edge Function + web lib)
+    name: Unit tests needing node_modules (Edge Function, web lib, pilot model)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +86,9 @@ jobs:
       - run: npm run test:functions
       # apps/web's pure lib logic — ADR-0007's "pure logic in src/lib/ ships with tests".
       - run: npm test --workspace=apps/web
+      # The pilot model is money math too, now that it calls @rido/pricing instead of carrying
+      # its own copy. ADR-0005 wanted this; ADR-0007 says it comes with tests.
+      - run: npm test --workspace=tools/pilot-model
 
   functions-deno:
     name: Edge Function (Deno — the runtime it actually runs on)

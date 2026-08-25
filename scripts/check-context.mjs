@@ -142,7 +142,7 @@ const PRICING_ALLOWED = [
   // and checked against it in CI (`--check`). The rates are here because a script COPIED them
   // from the one home, not because anyone typed them twice — which is the thing this rule is
   // actually trying to prevent. Narrow on purpose: this exact path, not the directory.
-  /^apps\/web\/src\/lib\/marketing\/published-tiers\.generated\.ts$/,
+  /^(apps\/web\/src\/lib\/marketing|tools\/pilot-model\/src)\/published-tiers\.generated\.ts$/,
 ];
 const codeFiles = files.filter((f) => /\.(ts|tsx|js|jsx|sql)$/.test(f));
 for (const file of codeFiles) {

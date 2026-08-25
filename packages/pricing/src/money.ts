@@ -20,11 +20,62 @@ export const bps = (n: number): Bps => {
 };
 
 /**
+ * Basis points per whole unit: 10,000 bps = 100%. The one place this conversion factor lives.
+ *
+ * This is a unit definition, not a rate — the rates themselves are rows in `commission_tiers`
+ * and never appear in this package.
+ */
+export const BPS_DENOMINATOR = 10_000;
+
+/**
+ * Divide two non-negative integers, rounding half-up, without ever producing a fractional
+ * intermediate.
+ *
+ * Written with an explicit quotient/remainder rather than `Math.round(n / d)` because the naive
+ * form has two failure modes that matter when the result is money: `Math.round` rounds -0.5
+ * toward zero rather than half-up, and at large magnitudes a floating-point quotient can land a
+ * hair below an integer and floor to the wrong side. Comparing `remainder * 2` against the
+ * divisor decides the tie in exact integer arithmetic instead.
+ *
+ * Callers guarantee non-negative inputs; commission and fares are never negative.
+ */
+export function roundHalfUpDiv(numerator: number, denominator: number): number {
+  if (!Number.isSafeInteger(numerator) || numerator < 0) {
+    throw new Error(
+      `roundHalfUpDiv numerator must be a non-negative safe integer, got ${numerator}`,
+    );
+  }
+  if (!Number.isSafeInteger(denominator) || denominator <= 0) {
+    throw new Error(
+      `roundHalfUpDiv denominator must be a positive safe integer, got ${denominator}`,
+    );
+  }
+
+  const quotient = Math.floor(numerator / denominator);
+  const remainder = numerator - quotient * denominator;
+  return remainder * 2 >= denominator ? quotient + 1 : quotient;
+}
+
+/**
  * Apply a basis-point rate to an amount, rounding half-up to the cent.
  *
  * Callers round the COMMISSION and derive payout as `fare - commission`. Never round both —
  * they must sum to the fare exactly, because the snapshot is the accounting record.
+ *
+ * Note that `commissionForRide` does NOT call this once per band. A ride spanning several bands
+ * accumulates one exact numerator and rounds a single time; rounding each band separately would
+ * round quantities that aren't money on their own. See ./commission.ts.
  */
-export function applyBps(_amount: Cents, _rate: Bps): Cents {
-  throw new Error("not implemented");
+export function applyBps(amount: Cents, rate: Bps): Cents {
+  if (!Number.isInteger(amount) || amount < 0) {
+    throw new Error(`applyBps amount must be a non-negative integer, got ${amount}`);
+  }
+  if (!Number.isInteger(rate) || rate < 0 || rate > BPS_DENOMINATOR) {
+    throw new Error(`applyBps rate must be an integer in [0, ${BPS_DENOMINATOR}], got ${rate}`);
+  }
+  if (!Number.isSafeInteger(amount * rate)) {
+    throw new Error(`applyBps overflows exact integer arithmetic: ${amount} x ${rate}`);
+  }
+
+  return cents(roundHalfUpDiv(amount * rate, BPS_DENOMINATOR));
 }

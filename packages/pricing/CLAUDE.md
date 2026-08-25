@@ -58,9 +58,37 @@ Required cases:
   a larger fare never produces a smaller payout.
 - **Exactness:** `commissionCents + payoutCents === fareCents`. Every case. No exceptions.
 - **Subscription:** pilot ($0 fee, commission still on) vs steady state ($50 fee).
-- Tier fixtures **mirror `supabase/seed/commission_tiers.sql`** — never hardcode band literals
-  in a test body. If the seed changes and the tests still pass unchanged, the fixture is lying.
 
 The same suite must pass under Deno (`deno test`) as well as the web test runner. That
 cross-runtime run is what proves the Edge Function and the app compute the same number — it is
 the guard against the one failure mode that would silently break the books.
+
+### One file knows the rates; the rest know the rules
+
+The rates aren't settled — repricing after market research is expected, and it must not mean
+rewriting the suite. So the tests are split:
+
+- **`commission.seed.test.ts` is the only file that names a rate or a boundary.** It mirrors
+  `supabase/seed/commission_tiers.sql` and pins the worked examples the docs publish. **A
+  repricing is supposed to break it** — that's the tripwire that stops new rates from silently
+  contradicting the marketing copy. Verified: swapping the seed for a different band count and
+  different rates fails exactly these tests and nothing else.
+- **Every other test uses synthetic fixtures invented for the test** and asserts properties that
+  hold for *any* valid tier set — exactness, monotonicity, band-count independence, boundary
+  splitting. If one of those breaks after a rate change, the math broke, not the pricing.
+
+Procedure for an actual repricing: `docs/business/changing-rates.md`.
+
+## Rounding, and what "identical to month-end" really means
+
+Commission accumulates an **exact integer numerator** — the sum of (slice × rate) across the bands
+a ride spans — and rounds **once**, at the end. Payout is then derived as `fare − commission`.
+Never round per band and sum: that rounds quantities that aren't money on their own, and the error
+compounds. Nothing in the path is ever a fractional value.
+
+ADR-0002 says per-ride bracketing is "mathematically identical" to bracketing the whole month in
+one pass. Exactly true unrounded; true to within a cent per boundary-crossing ride once each is
+rounded to whole cents. It never matters, because nothing computes the whole-month figure —
+`driver_monthly_stats` is the **sum of the snapshots**, so there is no second computation to
+disagree with. Worth knowing before someone writes a reconciliation script, sees a three-cent gap,
+and concludes the books are broken.

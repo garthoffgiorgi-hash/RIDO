@@ -74,6 +74,12 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   a ride; it does not describe one.
 - Deploy with `--use-api` (no Docker required). The service-role key stays inside the function —
   never in `deno.json`, which is committed and holds only import aliases.
+- **A new function that imports `@rido/pricing` needs a `[functions.<name>]` table in
+  `supabase/config.toml`** pointing `import_map` at `./functions/deno.json`. `functions deploy`
+  does not discover the shared `deno.json` on its own — without this entry it looks for
+  `supabase/functions/<name>/deno.json` instead, finds nothing, and fails deploy with "Relative
+  import path @rido/pricing not prefixed with / or ./ or ../". Confirmed on `complete-ride`'s
+  first real deploy (ADR-0005). Copy the `[functions.complete-ride]` block for the next function.
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections.
 

@@ -25,7 +25,9 @@
  * apply, marked below. It is still bound by this same CPU budget and its container can be
  * recycled, so it is a place to hand work off, never a place to do it.
  *
- * Deploy: `supabase functions deploy complete-ride --use-api` (no Docker needed).
+ * Deploy: `supabase functions deploy complete-ride --project-ref <ref> --use-api` (no Docker
+ * needed). Requires the `[functions.complete-ride]` entry in `supabase/config.toml` — without it,
+ * deploy fails to resolve the `@rido/pricing` import. See `supabase/CLAUDE.md`.
  */
 
 import { authorizeCompletion, MAX_RATING_ATTEMPTS, rateCompletion } from "./core.ts";

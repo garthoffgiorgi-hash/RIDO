@@ -1,3 +1,16 @@
 [db.seed]
 enabled = true
 sql_paths = ["seed/*.sql"]
+
+# Every function that imports "@rido/pricing" needs registering here, or `supabase functions
+# deploy <name>` fails with "Relative import path @rido/pricing not prefixed with / or ./ or
+# ../" — the CLI does NOT discover supabase/functions/deno.json on its own; without this table
+# it defaults to looking for supabase/functions/<name>/deno.json instead, finds nothing, and
+# refuses the bare specifier. `deno check`/`deno test` don't have this problem because CI passes
+# `--config supabase/functions/deno.json` explicitly; `functions deploy` has no such flag wired
+# into our npm scripts, so config.toml is the only place this can live permanently. Confirmed:
+# complete-ride failed deploy without this table and succeeded once it was added.
+#
+# Path is relative to this file's directory (supabase/), matching every other path in this file.
+[functions.complete-ride]
+import_map = "./functions/deno.json"

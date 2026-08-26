@@ -61,12 +61,14 @@ apps/web/          packages/pricing/          supabase/          tools/
   alias, not a raw relative path.** `supabase/functions/deno.json` maps `@rido/pricing` so
   function code reads the same specifier `apps/web` does, and relocating the package later only
   touches that one file.
-  - **Still unverified: a real authenticated `functions deploy` and `functions serve`.** No
-    Docker daemon and no linked Supabase project were available to spike against, so module
-    *resolution* is proven but the actual upload path is not. Confirm on the first real deploy of
-    `complete-ride`, using `--use-api` (documented in 2.111.0, no Docker required).
-  - Fallback if a real deploy surfaces something the local spike didn't: a build step emitting
-    into `supabase/functions/_shared/`, guarded by CI byte-equality against `packages/pricing` —
-    never a hand-maintained copy.
+  - **Verified (2026-08-26): a real authenticated `functions deploy` against the live project,
+    using `--use-api`.** The local spike's blind spot was real: `functions deploy` does not
+    discover `supabase/functions/deno.json` on its own the way `deno check`/`deno test` do when
+    given `--config` — it defaults to looking for a per-function `supabase/functions/<name>/
+    deno.json` and fails the deploy with "Relative import path @rido/pricing not prefixed with /
+    or ./ or ../" when that doesn't exist. Fixed by registering
+    `[functions.complete-ride] import_map = "./functions/deno.json"` in `supabase/config.toml` —
+    documented in `supabase/CLAUDE.md` so the next function gets the same entry rather than
+    rediscovering this the same way.
 - Regardless of how the import resolves, **`packages/pricing`'s test suite runs under both Deno
   and the web runner.** That cross-runtime run is the actual guarantee that the two agree.

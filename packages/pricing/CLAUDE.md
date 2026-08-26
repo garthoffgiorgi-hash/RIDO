@@ -41,7 +41,15 @@ earnings yield less take-home and invites gaming the $1,000 / $3,000 lines.
 | `src/tiers.ts` | The `CommissionTier` type and tier-band traversal |
 | `src/commission.ts` | `commissionForRide({ fareCents, mtdGrossCents, tiers })` |
 | `src/subscription.ts` | Flat-fee resolution: pilot ($0) vs standard ($5000) |
+| `src/fare.ts` | `quoteFare({ distanceMeters, durationSeconds, rateCard })` — what a ride COSTS |
+| `src/earnings-floor.ts` | Prop 22's guaranteed minimum. A diagnostic, not a rule |
 | `src/index.ts` | The public surface. Callers import only from here |
+
+`fare.ts` is the mirror image of `commission.ts`: one decides what a ride costs, the other how that
+is split. Same rules — pure, integer cents, no rate as a literal, the card is a row in
+`fare_rate_cards`. Its per-mile term converts metres exactly by scaling the numerator, since a mile
+is a fractional number of metres. Whether the card sits ~15% under an incumbent is checked by
+`scripts/calibrate-fares.ts`, not by a test in here: see `docs/business/fare-pricing.md`.
 
 ## Tests are the specification
 

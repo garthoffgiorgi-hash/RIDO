@@ -79,3 +79,37 @@ export function applyBps(amount: Cents, rate: Bps): Cents {
 
   return cents(roundHalfUpDiv(amount * rate, BPS_DENOMINATOR));
 }
+
+/**
+ * Scale an amount by a basis-point MULTIPLIER, which may exceed 1.00x.
+ *
+ * Deliberately separate from `applyBps` rather than relaxing its upper bound. The two look alike
+ * and are not the same thing:
+ *
+ *   applyBps           takes a SHARE of an amount. A rate above 100% is meaningless, and the
+ *                      `rate <= BPS_DENOMINATOR` check is load-bearing — it is what guarantees
+ *                      `commission <= fare`, and therefore `payout >= 0` and a `commission_rate_bps`
+ *                      the database's CHECK will accept. Widening it to admit surge would quietly
+ *                      remove that guarantee from the commission path.
+ *   applyMultiplierBps SCALES an amount. 20,000 bps is 2.00x, which is exactly what a demand
+ *                      multiplier means and exactly what a commission rate must never be.
+ *
+ * Same rounding, so a scaled amount and a shared amount can never disagree by a cent.
+ */
+export function applyMultiplierBps(amount: Cents, multiplier: Bps): Cents {
+  if (!Number.isInteger(amount) || amount < 0) {
+    throw new Error(`applyMultiplierBps amount must be a non-negative integer, got ${amount}`);
+  }
+  if (!Number.isInteger(multiplier) || multiplier < 0) {
+    throw new Error(
+      `applyMultiplierBps multiplier must be a non-negative integer, got ${multiplier}`,
+    );
+  }
+  if (!Number.isSafeInteger(amount * multiplier)) {
+    throw new Error(
+      `applyMultiplierBps overflows exact integer arithmetic: ${amount} x ${multiplier}`,
+    );
+  }
+
+  return cents(roundHalfUpDiv(amount * multiplier, BPS_DENOMINATOR));
+}

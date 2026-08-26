@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.15"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       commission_tiers: {
@@ -173,6 +148,39 @@ export type Database = {
         }
         Relationships: []
       }
+      fare_rate_cards: {
+        Row: {
+          active: boolean
+          base_cents: number
+          effective_from: string
+          id: string
+          market: string
+          minimum_fare_cents: number
+          per_mile_cents: number
+          per_minute_cents: number
+        }
+        Insert: {
+          active?: boolean
+          base_cents: number
+          effective_from: string
+          id?: string
+          market: string
+          minimum_fare_cents: number
+          per_mile_cents: number
+          per_minute_cents: number
+        }
+        Update: {
+          active?: boolean
+          base_cents?: number
+          effective_from?: string
+          id?: string
+          market?: string
+          minimum_fare_cents?: number
+          per_mile_cents?: number
+          per_minute_cents?: number
+        }
+        Relationships: []
+      }
       rides: {
         Row: {
           accepted_at: string | null
@@ -180,16 +188,21 @@ export type Database = {
           commission_rate_bps: number | null
           completed_at: string | null
           created_at: string
+          distance_meters: number | null
           driver_id: string
           driver_payout_cents: number | null
+          dropoff_geog: unknown
           dropoff_lat: number | null
           dropoff_lng: number | null
+          duration_seconds: number | null
           fare_cents: number
           id: string
+          pickup_geog: unknown
           pickup_lat: number | null
           pickup_lng: number | null
           requested_at: string
           rider_id: string
+          started_at: string | null
           status: string
         }
         Insert: {
@@ -198,16 +211,21 @@ export type Database = {
           commission_rate_bps?: number | null
           completed_at?: string | null
           created_at?: string
+          distance_meters?: number | null
           driver_id: string
           driver_payout_cents?: number | null
+          dropoff_geog?: unknown
           dropoff_lat?: number | null
           dropoff_lng?: number | null
+          duration_seconds?: number | null
           fare_cents: number
           id?: string
+          pickup_geog?: unknown
           pickup_lat?: number | null
           pickup_lng?: number | null
           requested_at?: string
           rider_id: string
+          started_at?: string | null
           status?: string
         }
         Update: {
@@ -216,16 +234,21 @@ export type Database = {
           commission_rate_bps?: number | null
           completed_at?: string | null
           created_at?: string
+          distance_meters?: number | null
           driver_id?: string
           driver_payout_cents?: number | null
+          dropoff_geog?: unknown
           dropoff_lat?: number | null
           dropoff_lng?: number | null
+          duration_seconds?: number | null
           fare_cents?: number
           id?: string
+          pickup_geog?: unknown
           pickup_lat?: number | null
           pickup_lng?: number | null
           requested_at?: string
           rider_id?: string
+          started_at?: string | null
           status?: string
         }
         Relationships: [
@@ -290,6 +313,67 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      active_commission_tiers: {
+        Args: never
+        Returns: {
+          active: boolean
+          effective_from: string
+          id: string
+          lower_bound_cents: number
+          rate_bps: number
+          tier_order: number
+          upper_bound_cents: number | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "commission_tiers"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      active_fare_rate_card: {
+        Args: { p_market: string }
+        Returns: {
+          active: boolean
+          base_cents: number
+          effective_from: string
+          id: string
+          market: string
+          minimum_fare_cents: number
+          per_mile_cents: number
+          per_minute_cents: number
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "fare_rate_cards"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      apply_ride_commission: {
+        Args: {
+          p_commission_cents: number
+          p_commission_rate_bps: number
+          p_driver_payout_cents: number
+          p_expected_mtd_gross_cents: number
+          p_expected_year_month: string
+          p_ride_id: string
+        }
+        Returns: Database["public"]["CompositeTypes"]["ride_commission_application"]
+        SetofOptions: {
+          from: "*"
+          to: "ride_commission_application"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      driver_month_to_date: {
+        Args: { p_driver_id: string }
+        Returns: {
+          gross_fare_cents: number
+          year_month: string
+        }[]
+      }
       reserve_driver_month: {
         Args: { p_completed_at: string; p_driver_id: string }
         Returns: {
@@ -315,7 +399,18 @@ export type Database = {
       [_ in never]: never
     }
     CompositeTypes: {
-      [_ in never]: never
+      ride_commission_application: {
+        outcome: string | null
+        ride_id: string | null
+        ride_status: string | null
+        fare_cents: number | null
+        year_month: string | null
+        mtd_gross_cents: number | null
+        commission_rate_bps: number | null
+        commission_cents: number | null
+        driver_payout_cents: number | null
+        completed_at: string | null
+      }
     }
   }
 }
@@ -438,9 +533,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

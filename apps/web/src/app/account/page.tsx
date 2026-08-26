@@ -1,21 +1,33 @@
 import { Wordmark } from "@/components/domain/Wordmark";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
+import { getOwnDriverProfile } from "@/lib/drivers/server";
+import { isActiveDriver } from "@/lib/drivers/status";
 
 /**
- * Minimal signed-in surface. Two jobs: give sign-out a home, and prove the session is readable
- * from a Server Component — if this renders an email, the whole cookie chain (proxy refresh ->
- * server client -> RLS-scoped query) is working.
+ * Signed-in landing page. One surface, role-aware: everyone gets a way to book a ride, and
+ * anyone with a `drivers` row (via `getOwnDriverProfile` — no `role` column exists; a driver
+ * identity IS the row) also sees their driver status and a way into `/drive`. A person can be
+ * both at once, so this page shows whichever is true rather than forcing a choice — it doubles
+ * as the chooser.
  *
- * The first route in the app that actually requires auth. Everything else is still public.
+ * Post-login redirect still lands everyone here rather than splitting by role at the proxy
+ * layer: neither `/request` nor `/drive` has real functionality yet, so there's nowhere more
+ * specific to send anyone. That split is worth revisiting once one of them does.
+ *
+ * Also still proves the session is readable from a Server Component — if this renders an email,
+ * the whole cookie chain (proxy refresh -> server client -> RLS-scoped query) is working.
  */
 export default async function AccountPage() {
   const user = await requireUser();
+  const driver = await getOwnDriverProfile(user);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ivory p-6">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 flex justify-center">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="mb-2 flex justify-center">
           <Wordmark size={28} />
         </div>
 
@@ -36,6 +48,42 @@ export default async function AccountPage() {
             </button>
           </form>
         </Card>
+
+        <Card>
+          <h2 className="mb-3 font-sora text-lg font-bold text-midnight">Rider</h2>
+          <p className="mb-4 text-sm text-slate">Request a ride whenever you need one.</p>
+          <Button href="/request" fullWidth>
+            Book a ride
+          </Button>
+        </Card>
+
+        {driver ? (
+          <Card>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-sora text-lg font-bold text-midnight">Driver</h2>
+              <Badge tone={isActiveDriver(driver) ? "accent" : "neutral"}>{driver.status}</Badge>
+            </div>
+            {isActiveDriver(driver) ? (
+              <p className="mb-4 text-sm text-slate">You&apos;re cleared to drive.</p>
+            ) : (
+              <p className="mb-4 text-sm text-slate">
+                Background check: {driver.background_check_status}. Vehicle inspection:{" "}
+                {driver.vehicle_inspection_status}.
+              </p>
+            )}
+            <Button href="/drive" fullWidth variant="secondary">
+              Go to driver dashboard
+            </Button>
+          </Card>
+        ) : (
+          <Card>
+            <h2 className="mb-1 font-sora text-lg font-bold text-midnight">Want to drive?</h2>
+            <p className="mb-4 text-sm text-slate">Keep more of what you earn, on your terms.</p>
+            <Button href="/drivers" fullWidth variant="secondary">
+              Learn about driving
+            </Button>
+          </Card>
+        )}
       </div>
     </main>
   );

@@ -8,12 +8,13 @@ logic is the most important code in this repo. Get it exactly right.**
 
 **Built and working:** the Next.js app on the real brand, four marketing routes, **auth** (a live
 Supabase project, sign-up and sign-in by email or phone, session refresh, route guards), the
-**database** (schema applied, RLS and constraints tested against a real Postgres), **all
-commission math** in `packages/pricing`, and the **`complete-ride` Edge Function** that joins
-them.
+**database** (schema applied, RLS and constraints tested against a real Postgres), **all money
+math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — and the
+**`complete-ride` Edge Function** that joins them.
 
 **Not built:** payments (Stripe), maps (Mapbox), the rider booking flow, the driver app, and any
-rider/driver distinction — which is why every post-login redirect goes to `/account`.
+rider/driver distinction — which is why every post-login redirect goes to `/account`. A fare is
+computable but nothing asks for one: quoting needs a routing engine for distance and duration.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.
@@ -93,8 +94,12 @@ a new file is written, and the root CLAUDE.md is the only project memory that su
 
 ## Guardrails — do not
 
-- Hardcode a rate, a tier boundary, or the flat fee anywhere outside the `commission_tiers` seed.
-- Re-implement commission math in SQL, an Edge Function, a component, or the economics model.
+- Hardcode a rate, a tier boundary, or the flat fee anywhere outside the `commission_tiers` seed,
+  or a base/per-mile/per-minute/minimum fare outside the `fare_rate_cards` seed.
+- Re-implement commission or fare math in SQL, an Edge Function, a component, or the economics
+  model.
+- Compute a rider's price from a competitor's. Our card is ours; the 15% is a calibration target
+  re-checked by `npm run check:calibration`, never a live derivation. (ADR-0009)
 - Store currency as a float, or let a driver go active without passing the compliance gate.
 - Reintroduce the flat fee inside the pilot window.
 - Import a vendor SDK into a component, a page, or a route handler. Wrap it in `src/lib/` first.

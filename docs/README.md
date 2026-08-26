@@ -11,6 +11,9 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 |---|---|
 | Commission rates, tier bands, bracketed-vs-cliff | `decisions/0002-bracketed-per-ride-commission.md`; **runtime values** live in `supabase/seed/commission_tiers.sql` |
 | How to reprice — change a rate, a band, or the flat fee | `business/changing-rates.md` |
+| What a ride COSTS a rider; how to change a fare | `business/fare-pricing.md`; **runtime values** live in `supabase/seed/fare_rate_cards.sql` |
+| Why RIDO quotes the fare, and what "15% under Uber" means | `decisions/0009-rido-quotes-the-fare.md` |
+| Competitor rates we calibrate against (estimates only) | `business/competitor-pricing.md` |
 | The marketing site's rates and the "~86%" figure | **derived** — `apps/web/src/lib/marketing/figures.ts`, generated from the seed. Never retyped |
 | Flat fee amount, pilot waiver, fee turn-on trigger | `decisions/0003-pilot-fee-waiver.md` + `business/monetization.md` |
 | Why hybrid (fee + commission) rather than pure subscription | `decisions/0001-hybrid-monetization.md` |
@@ -49,7 +52,7 @@ docs/
 | # | Question | Blocks | Owner |
 |---|---|---|---|
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride rate? | The entire financial model | Broker |
-| 2 | Prop 22 earnings floor × "drivers set fares" — who owes what? | Driver classification, payout design | CA attorney |
+| 2 | Prop 22 earnings floor — who owes what, and how the two-week aggregate lands? ("drivers set fares" is resolved: they don't — ADR-0009) | Driver classification, payout design | CA attorney |
 | 3 | Does RIDO absorb Stripe's ~2.9% + $0.30, or pass it to drivers? | Take-rate math on low fares | Founder |
 
 Answering one of these produces an ADR. Until then it stays here, visible. (Question 4 — Supabase

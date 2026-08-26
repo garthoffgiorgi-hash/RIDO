@@ -84,6 +84,11 @@ jobs:
       # doesn't install anything.) One install, both suites.
       - run: npm ci
       - run: npm run test:functions
+      # The fare card was CALIBRATED to sit a target margin under a modelled incumbent fare. This
+      # reads supabase/seed/fare_rate_cards.sql and fails if that margin has drifted out of band,
+      # or if a driver would earn less than on an incumbent for any trip shape. Needs node_modules
+      # because it calls @rido/pricing rather than reimplementing the arithmetic.
+      - run: npm run check:calibration
       # apps/web's pure lib logic — ADR-0007's "pure logic in src/lib/ ships with tests".
       - run: npm test --workspace=apps/web
       # The pilot model is money math too, now that it calls @rido/pricing instead of carrying

@@ -4,7 +4,7 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-25** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-08-26** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
@@ -29,10 +29,12 @@ screens, and nothing that creates a ride in the first place.
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
 | `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 15 tests on `../tools/pilot-model/src/model.ts` |
 | Icons | `lucide-react`, per the design system's documented substitution |
-| `packages/pricing` | **Implemented and tested.** Bracketed commission, tier validation, flat-fee resolution. 55 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
+| `packages/pricing` | **Implemented and tested.** Fare quoting (`quoteFare`) and the Prop 22 floor alongside the commission math. Bracketed commission, tier validation, flat-fee resolution. 95 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project live, schema applied to it.** Twelve migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions), RLS on every table, five pgTAP tests plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The three newest migrations are not yet applied to the live project**, so `database.types.ts` is a regeneration behind. |
+| Supabase | **Project live, schema applied to it.** Fourteen migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards` and `active_fare_rate_card`), RLS on every table, six pgTAP files (41 tests) plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The five newest migrations are not yet applied to the live project**, so `database.types.ts` is a regeneration behind. |
 | `complete-ride` | **Built and tested.** `supabase/functions/complete-ride/` — pure `core.ts` (authorization + rating, 19 tests under **both** Node and Deno), `db.ts` (the only SDK importer), `index.ts` (HTTP, bounded compare-and-swap retry). ADR-0008. |
+| Fare pricing | **Built.** `quoteFare` + a per-market `fare_rate_cards` table, seeded for San Diego and calibrated to sit ~15% under a modelled UberX fare. `npm run calibrate` prints the report; `npm run check:calibration` fails in CI if the discount drifts or a driver would earn less than on an incumbent. ADR-0009. |
+| Prop 22 floor | `packages/pricing/src/earnings-floor.ts` — per-trip diagnostic plus the two-week aggregate the statute actually uses. Nothing enforces it yet; there is no payout run to enforce it in. |
 | Ride spatial-temporal data | PostGIS enabled; `rides` carries generated `pickup_geog`/`dropoff_geog` (GiST-indexed), `started_at`, `distance_meters`, `duration_seconds`, and partial indexes on completed rides. Recorded for a future optimizer — nothing reads them yet, and none of it is backfillable. |
 
 ## What does not exist
@@ -44,7 +46,7 @@ and nothing that creates a ride for `complete-ride` to finish) · driver app.
 `complete-ride` has not been **deployed** to the live project or exercised against it — it is
 verified locally (both runtimes, and its SQL against a real Postgres) but
 `supabase functions deploy complete-ride --use-api` hasn't been run. `database.types.ts` also
-needs regenerating (`npm run types:generate`) once the four newest migrations are applied there.
+needs regenerating (`npm run types:generate`) once the five newest migrations are applied there.
 
 ## Build order
 
@@ -77,8 +79,8 @@ distinction — nothing marks that yet, which is why every post-login redirect c
 **Phase 2 — money spine.** ✅ **`packages/pricing` implemented and tested** — bracketed commission
 with boundary tests at every tier edge (`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`,
 `$3,000.00`, `$3,000.01`), spanning rides, monotonicity, and exact `commission + payout === fare`.
-55 tests, passing identically under Node and Deno. The suite is split so a repricing breaks only
-`commission.seed.test.ts` — see `business/changing-rates.md`.
+The suite is split so a repricing breaks only `commission.seed.test.ts` — see
+`business/changing-rates.md`.
 ✅ `bump_monthly_stats` trigger and `reserve_driver_month` locking (DB side, verified).
 ✅ **The `complete-ride` Edge Function** — reads the active tiers and the driver's month-to-date
 position, rates with `@rido/pricing`, and hands the result to `apply_ride_commission`, which locks,
@@ -89,6 +91,14 @@ from compare-and-swap instead (**ADR-0008**). Proved by a two-connection race
 test fails if the check is removed.
 ⬜ Deploy it (`supabase functions deploy complete-ride --use-api`) and exercise it against the
 live project. Nothing creates a ride yet, so this needs a hand-inserted row.
+✅ **Ride pricing** — `quoteFare`, the `fare_rate_cards` table, and a calibration check in CI
+(ADR-0009, `business/fare-pricing.md`). Two findings recorded there rather than discovered later: a
+RIDO driver beats an incumbent driver on every trip shape tested even at our worst commission band,
+and there is a **low-volume dead zone** once the flat fee turns on — break-even runs from 20 to 94
+trips/month across the 35–50% incumbent-take range, and vanishes entirely during the pilot.
+⬜ Decide what to do about that dead zone. Needs market research, not code.
+⬜ A `quote-ride` Edge Function. Blocked on Mapbox (nothing supplies distance/duration) and on the
+booking flow (nothing asks for a quote).
 ✅ **The marketing percentage is derived**, not hand-maintained: `supabase/seed/commission_tiers.sql`
 → `scripts/generate-published-tiers.mjs` → `apps/web/src/lib/marketing/figures.ts` →
 `commissionForRide`. Verified by repricing the seed and watching every page figure move, including
@@ -101,7 +111,9 @@ The flat fee now turns on at a driver-count threshold — the traction signal AD
 rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/model.ts` with 15 tests, and fixing a
 display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
-**Phase 3 — surfaces.** ✅ Marketing pages. ⬜ Rider request flow (map-first, bottom sheet, fare
+**Phase 3 — surfaces.** ✅ Marketing pages. ✅ The fare a rider is quoted is computable
+(`quoteFare` + the seeded card) — what's missing is a surface to show it on and a routing engine to
+supply distance and duration. ⬜ Rider request flow (map-first, bottom sheet, fare
 up front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier
 progress). ⬜ Mapbox.
 

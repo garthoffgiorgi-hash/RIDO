@@ -1,5 +1,6 @@
 {
   "imports": {
-    "@rido/pricing": "../../packages/pricing/src/index.ts"
+    "@rido/pricing": "../../packages/pricing/src/index.ts",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2"
   }
 }

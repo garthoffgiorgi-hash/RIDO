@@ -52,14 +52,14 @@ Put #3 in the hero and we read preachy to a 19-year-old at 2am. Keep #3 as the r
 
 **Voice principles**
 - Plain verbs, sentence case, no filler. Specific beats clever.
-- Say what a thing does, not how it's built. "Driver keeps 87%," not "optimized payout architecture."
+- Say what a thing does, not how it's built. "Driver keeps ~86%," not "optimized payout architecture."
 - Active voice. A button says exactly what happens: "Get a rido," "Accept," "Cancel."
 - Confidence without arrogance. State the fairness as fact; don't lecture.
 - Errors don't apologize or go vague — they say what happened and how to fix it.
 
 **Do**
 - "Get a rido." / "Cheaper for you. Fair for your driver."
-- "Drivers keep 87% of every fare." (numbers, concrete)
+- "Drivers keep ~86% of every fare." (numbers, concrete)
 - "The big apps quietly take up to half. We built the opposite." (irreverence aimed outward)
 
 **Don't**

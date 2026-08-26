@@ -2,24 +2,31 @@
   "name": "rido",
   "private": true,
   "version": "0.0.0",
-  "description": "RIDO — a driver-favorable rideshare marketplace.",
+  "description": "RIDO \u2014 a driver-favorable rideshare marketplace.",
   "workspaces": [
     "apps/*",
-    "packages/*"
+    "packages/*",
+    "tools/*"
   ],
   "engines": {
     "node": ">=22.6.0"
   },
   "scripts": {
     "check:context": "node scripts/check-context.mjs",
+    "generate:tiers": "node scripts/generate-published-tiers.mjs",
+    "check:tiers": "node scripts/generate-published-tiers.mjs --check",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "dev": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
+    "model": "npm run dev --workspace=tools/pilot-model",
     "test": "npm run test --workspaces --if-present",
     "test:pricing:deno": "if find packages/pricing/src -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check packages/pricing/src/; else echo 'No packages/pricing/src/*.test.ts files yet - nothing to run.'; fi",
     "check:pricing:deno": "deno check packages/pricing/src/index.ts",
+    "test:functions": "find supabase/functions -name '*.test.ts' -print0 | xargs -0 --no-run-if-empty node --test --experimental-strip-types",
+    "test:functions:deno": "if find supabase/functions -name '*.test.ts' -print -quit | grep -q .; then deno test --no-check --config supabase/functions/deno.json supabase/functions/; else echo 'No supabase/functions/**/*.test.ts files yet - nothing to run.'; fi",
+    "check:functions:deno": "deno check --config supabase/functions/deno.json supabase/functions/complete-ride/index.ts",
     "types:generate": "supabase gen types typescript --local > apps/web/src/types/database.types.ts"
   },
   "devDependencies": {

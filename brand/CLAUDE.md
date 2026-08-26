@@ -34,7 +34,7 @@ doc (since merged into `design-system.md` and removed) specified 52px inputs whi
 ## Voice — applies to every string you write
 
 Plain verbs, sentence case, active voice. Buttons name exactly what happens ("Get a rido", not
-"Submit"). Specific beats clever: "Drivers keep 87%", not "optimized payouts".
+"Submit"). Specific beats clever: "Drivers keep ~86%", not "optimized payouts".
 
 **Irreverence points outward** — at incumbents, in marketing. **Warmth and steadiness point
 inward** — at riders and drivers, in product. People are getting into cars with strangers at

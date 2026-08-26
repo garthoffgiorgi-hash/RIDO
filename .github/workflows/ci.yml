@@ -16,6 +16,10 @@ jobs:
         with:
           node-version: "22.6.0"
       - run: npm run check:context
+      # The marketing site's rates are generated from supabase/seed/commission_tiers.sql. This
+      # fails the build if the seed changed and the generated file wasn't regenerated — i.e. if
+      # the database and the website would disagree about what RIDO charges. No install needed.
+      - run: npm run check:tiers
 
   lint:
     name: Lint + format (Biome)
@@ -65,3 +69,55 @@ jobs:
       # adding an install step will fail here while passing on your machine.
       - run: npm run check:pricing:deno
       - run: npm run test:pricing:deno
+
+  unit-node:
+    name: Unit tests needing node_modules (Edge Function, web lib, pilot model)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      # Unlike pricing-node, these need `npm ci`: both suites import "@rido/pricing" by package
+      # name, which Node resolves through the workspace symlink in node_modules. (Deno resolves
+      # the same specifier through supabase/functions/deno.json, which is why the Deno job
+      # doesn't install anything.) One install, both suites.
+      - run: npm ci
+      - run: npm run test:functions
+      # apps/web's pure lib logic — ADR-0007's "pure logic in src/lib/ ships with tests".
+      - run: npm test --workspace=apps/web
+      # The pilot model is money math too, now that it calls @rido/pricing instead of carrying
+      # its own copy. ADR-0005 wanted this; ADR-0007 says it comes with tests.
+      - run: npm test --workspace=tools/pilot-model
+
+  functions-deno:
+    name: Edge Function (Deno — the runtime it actually runs on)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # check — type-checks the deployed entry point under Deno's own resolution, including the
+      #         real @supabase/supabase-js. This is what catches an Edge Function that would
+      #         fail on deploy rather than in review.
+      # test  — runs the pure core (core.test.ts) on the runtime that will execute it, so the
+      #         authorization rule and the pricing call are proven where they'll run, not only
+      #         under Node.
+      #
+      # --no-check on `test` for the same reason as pricing-deno: the test files import
+      # node:test / node:assert, and type-checking those needs @types/node from node_modules,
+      # which this job has no reason to install. The shipped source is fully type-checked by the
+      # step above. Removing --no-check without adding an install step fails here and passes
+      # locally.
+      #
+      # BOTH scripts pass `--config supabase/functions/deno.json` explicitly, and must keep doing
+      # so. Deno discovers a config file by walking up from the CURRENT WORKING DIRECTORY, not
+      # from the entry file — so run from the repo root, it never finds the functions' import map
+      # on its own. Dropping the flag passes on a developer machine anyway, because root
+      # node_modules/ holds both @rido/pricing (a workspace symlink) and @supabase/supabase-js
+      # (apps/web's dependency), and Deno falls back to node_modules resolution. It then fails
+      # here, where there is no install step. That is not a hypothetical: it is exactly how this
+      # job first broke.
+      - run: npm run check:functions:deno
+      - run: npm run test:functions:deno

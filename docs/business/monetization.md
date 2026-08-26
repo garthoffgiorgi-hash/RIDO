@@ -18,9 +18,14 @@
 
 ## Published driver-keeps figure
 
-**Use ~86% (86.4% precisely), commission-only, until `packages/pricing` computes it directly.**
-Reusing the worked example above ($3,600 GMV/driver-mo → driver keeps $3,112) rather than a new
-number, so the marketing figure and the worked example can never quietly disagree.
+**~86%, commission-only — and it is now computed, not maintained here.**
+`apps/web/src/lib/marketing/figures.ts` derives it by running the real `commissionForRide` over
+the seeded tiers, at the $3,600 GMV/driver-mo basis above. The worked example in this file and the
+figure on the website therefore cannot disagree: both come out of the same code, and CI fails if
+the generated tiers drift from `supabase/seed/commission_tiers.sql`.
+
+The numbers in this section are kept as the *published basis and caveats*. If a repricing changes
+them, `apps/web/src/lib/marketing/figures.test.ts` fails first — update both together.
 
 - **Basis: commission-only, no flat fee.** Matches the pilot state today (ADR-0003: fee is $0
   during the pilot) — so this is also the *launch-accurate* number, not an aspirational one.
@@ -36,8 +41,6 @@ number, so the marketing figure and the worked example can never quietly disagre
   published site should cite one number. Pick a standard GMV assumption and update whichever file
   disagrees; the checker won't catch this on its own — it's a duplicated derived figure, not a
   hardcoded pricing constant.
-- **⚠️ Superseded once Phase 2 lands.** `packages/pricing`'s `commissionForRide` makes this a
-  computed value instead of a hand-maintained one — tracked in `docs/roadmap.md`, Phase 2.
 
 ## Launch pilot: 6 months, no flat fee, commission still on
 - **Waive the $50 flat fee for the first 6 months; keep the graduated commission running.**
@@ -50,7 +53,7 @@ number, so the marketing figure and the worked example can never quietly disagre
 - Implementation note: this means the $50 fee is a state per driver/market, not a global calendar event. Don't bake a fixed date into pricing code.
 
 ## The master variable: commercial insurance
-The $1M commercial liability RIDO must carry (CA CPUC requirement, RIDO's obligation) is the single biggest cost and the biggest unknown. Its *structure* — a fixed monthly minimum premium vs a per-ride/per-mile rate — swings the pilot's cash burn by an order of magnitude (a few thousand vs six figures). **A broker quote is the #1 unresolved action; it gates the validity of every number here.** (The interactive model — `../../tools/pilot-model/PilotModel.jsx` — lets you toggle this and see the cash hole move.)
+The $1M commercial liability RIDO must carry (CA CPUC requirement, RIDO's obligation) is the single biggest cost and the biggest unknown. Its *structure* — a fixed monthly minimum premium vs a per-ride/per-mile rate — swings the pilot's cash burn by an order of magnitude (a few thousand vs six figures). **A broker quote is the #1 unresolved action; it gates the validity of every number here.** (The interactive model — `npm run model`, source in `../../tools/pilot-model/src/model.ts` — lets you toggle this and see the cash hole move.)
 
 ## Unit-economics intuition (for sanity checks)
 - Driver take-home advantage over incumbents is real but shrinks as the flat fee bites at low volume and grows as Tier-3 (8%) kicks in at high volume.

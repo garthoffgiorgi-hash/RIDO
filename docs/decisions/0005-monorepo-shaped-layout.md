@@ -21,7 +21,7 @@ in three runtimes:**
 
 If the app and the Edge Function compute commission from two different implementations, they will
 disagree eventually, and the disagreement will be in the accounting record. That already exists
-in miniature: the pilot economics model (`tools/pilot-model/PilotModel.jsx`) carries its own
+in miniature: the pilot economics model (`tools/pilot-model/src/model.ts`) carried its own
 `gradComm()` in floating-point dollars with its own tier variables — a second implementation of
 the single most important rule in the business, in the tool the founder uses to decide whether
 the business works.

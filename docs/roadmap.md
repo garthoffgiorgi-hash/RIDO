@@ -4,14 +4,15 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-24** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-08-25** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
-The **scaffolding, context system, marketing surface, auth, database schema, and commission math
-are built.** The schema is live on the real Supabase project with generated types; the money math
-is implemented and tested under both runtimes. What's missing is the **product**: no ride
-completion flow yet joining the two, no payments, no maps, no rider or driver screens.
+The **money spine is complete end to end.** Scaffolding, context system, marketing surface, auth,
+database schema, commission math, and the `complete-ride` Edge Function that joins them are all
+built and tested — a ride can be rated and snapshotted correctly, including under concurrent
+completions. What's missing is the **product around it**: no payments, no maps, no rider or driver
+screens, and nothing that creates a ride in the first place.
 
 ## What exists (verified, not assumed)
 
@@ -19,26 +20,31 @@ completion flow yet joining the two, no payments, no maps, no rider or driver sc
 |---|---|
 | Repo structure | Scoped `CLAUDE.md` per domain, ADRs, canonical-source map (`docs/README.md`) |
 | Drift guard | `scripts/check-context.mjs` — reference resolution, size budgets, ADR citations, pricing-literal leakage |
-| CI | `.github/workflows/ci.yml` — drift check + `packages/pricing` under **both** Node and Deno. Green. |
+| CI | `.github/workflows/ci.yml` — drift check, seed-vs-generated-tiers check, Biome, `packages/pricing` under **both** Node and Deno, the Edge Function under both, plus `apps/web` and `tools/pilot-model` lib tests. Green. |
 | `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
 | Marketing pages | `/`, `/drivers`, `/about` — **real UI**, built from `brand/exports/2026-08-07-landing-pages-v1.md` |
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
 | `/request` | Still a placeholder. Nothing links to it — rider flow not started. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
-| Mock data | `apps/web/src/lib/mock-data.ts` — every example figure lives here, not inline in components |
+| Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
+| `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 15 tests on `../tools/pilot-model/src/model.ts` |
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Bracketed commission, tier validation, flat-fee resolution. 55 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project live, schema applied to it.** Nine migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats` functions), RLS on every table, four pgTAP tests plus a standalone concurrency proof — all green against a real Postgres. `commission_tiers` seeded; `database.types.ts` generated from the live schema and committed. |
+| Supabase | **Project live, schema applied to it.** Twelve migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions), RLS on every table, five pgTAP tests plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The three newest migrations are not yet applied to the live project**, so `database.types.ts` is a regeneration behind. |
+| `complete-ride` | **Built and tested.** `supabase/functions/complete-ride/` — pure `core.ts` (authorization + rating, 19 tests under **both** Node and Deno), `db.ts` (the only SDK importer), `index.ts` (HTTP, bounded compare-and-swap retry). ADR-0008. |
+| Ride spatial-temporal data | PostGIS enabled; `rides` carries generated `pickup_geog`/`dropoff_geog` (GiST-indexed), `started_at`, `distance_meters`, `duration_seconds`, and partial indexes on completed rides. Recorded for a future optimizer — nothing reads them yet, and none of it is backfillable. |
 
 ## What does not exist
 
-`complete-ride` Edge Function — the two halves it joins are both built and tested
-(`reserve_driver_month` + the rollup trigger in the database; `commissionForRide` in
-`@rido/pricing`), but the function that orchestrates them inside one transaction is not ·
-Stripe (subscriptions or Connect) · Mapbox · a
-rider/driver role distinction · rider booking flow (which is also why `rides` has no
-`authenticated` write policy yet — nothing to write it against) · driver app.
+Stripe (subscriptions or Connect) · Mapbox · a rider/driver role distinction · rider booking flow
+(which is also why `rides` has no `authenticated` write policy yet — nothing to write it against,
+and nothing that creates a ride for `complete-ride` to finish) · driver app.
+
+`complete-ride` has not been **deployed** to the live project or exercised against it — it is
+verified locally (both runtimes, and its SQL against a real Postgres) but
+`supabase functions deploy complete-ride --use-api` hasn't been run. `database.types.ts` also
+needs regenerating (`npm run types:generate`) once the four newest migrations are applied there.
 
 ## Build order
 
@@ -74,25 +80,35 @@ with boundary tests at every tier edge (`$0`, `$999.99`, `$1,000.00`, `$1,000.01
 55 tests, passing identically under Node and Deno. The suite is split so a repricing breaks only
 `commission.seed.test.ts` — see `business/changing-rates.md`.
 ✅ `bump_monthly_stats` trigger and `reserve_driver_month` locking (DB side, verified).
-⬜ The `complete-ride` Edge Function itself — orchestrates `reserve_driver_month` →
-`@rido/pricing` → the `rides` snapshot inside one transaction (must hold one connection open
-across all three; see `ride-completion.md`). **Both halves it joins now exist**, which makes this
-the next concrete piece of work.
-⬜ Stripe. ⬜ Retire the hand-computed marketing percentage in
-`business/monetization.md` in favour of one derived from `packages/pricing` — and re-point
-`mock-data.ts`'s figures at it. Also the tier prose hardcoded in `(marketing)/drivers/page.tsx`,
-and the "Drivers keep 87%" in `../brand/` which already contradicts the canonical ~86%.
-⬜ Retire `gradComm()` in `tools/pilot-model` — a second commission implementation in
-floating-point dollars, with the pilot derived from a month index (the date comparison ADR-0003
-forbids). ADR-0005 says it should import `@rido/pricing`.
+✅ **The `complete-ride` Edge Function** — reads the active tiers and the driver's month-to-date
+position, rates with `@rido/pricing`, and hands the result to `apply_ride_commission`, which locks,
+re-checks that position and writes. The "one held-open transaction" the design called for turned
+out to be unbuildable from supabase-js, so the transaction moved into SQL and correctness comes
+from compare-and-swap instead (**ADR-0008**). Proved by a two-connection race
+(`supabase/tests/concurrent-apply-ride-commission.sh`): one `applied`, one `conflict` — and the
+test fails if the check is removed.
+⬜ Deploy it (`supabase functions deploy complete-ride --use-api`) and exercise it against the
+live project. Nothing creates a ride yet, so this needs a hand-inserted row.
+✅ **The marketing percentage is derived**, not hand-maintained: `supabase/seed/commission_tiers.sql`
+→ `scripts/generate-published-tiers.mjs` → `apps/web/src/lib/marketing/figures.ts` →
+`commissionForRide`. Verified by repricing the seed and watching every page figure move, including
+the CSS bar widths. CI fails if the generated file drifts from the seed. The two hardcoded tier
+sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../brand/` are gone.
+⬜ Stripe.
+✅ **`gradComm()` is retired.** `tools/pilot-model` is a real workspace (`npm run model`) that
+calls `@rido/pricing` instead of re-implementing bracketed commission in floating-point dollars.
+The flat fee now turns on at a driver-count threshold — the traction signal ADR-0003 describes —
+rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/model.ts` with 15 tests, and fixing a
+display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
 **Phase 3 — surfaces.** ✅ Marketing pages. ⬜ Rider request flow (map-first, bottom sheet, fare
 up front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier
 progress). ⬜ Mapbox.
 
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
-inspection, enforced in the database (a `CHECK` constraint plus RLS) — not yet in the app, since
-there's no driver-facing surface that would trigger it yet. ⬜ CPUC fee and airport surcharges as
+inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —
+`complete-ride`'s `authorizeCompletion` refuses any driver who isn't `status = 'active'`, which
+inherits the constraint's terms rather than restating them. ⬜ CPUC fee and airport surcharges as
 first-class line items — no schema exists for either.
 
 ## Two definitions of "prototype"

@@ -12,9 +12,14 @@ Supabase project, sign-up and sign-in by email or phone, session refresh, route 
 math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — and the
 **`complete-ride` Edge Function** that joins them.
 
-**Not built:** payments (Stripe), maps (Mapbox), the rider booking flow, the driver app, and any
-rider/driver distinction — which is why every post-login redirect goes to `/account`. A fare is
+**Not built:** payments (Stripe), maps (Mapbox), the rider booking flow, the driver app. A fare is
 computable but nothing asks for one: quoting needs a routing engine for distance and duration.
+
+**Partially built:** the rider/driver distinction. `/account` now shows a rider card to everyone
+and a driver card to anyone with a `drivers` row (no `role` column — the row's existence *is* the
+identity, and a person can hold both). Post-login redirect still always lands on `/account`,
+because neither `/request` nor the new `/drive` placeholder has real functionality to split into
+yet.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.

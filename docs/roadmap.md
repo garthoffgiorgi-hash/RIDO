@@ -24,6 +24,7 @@ screens, and nothing that creates a ride in the first place.
 | `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
 | Marketing pages | `/`, `/drivers`, `/about` — **real UI**, built from `brand/exports/2026-08-07-landing-pages-v1.md` |
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
+| `/account`, `/drive` | **Role-aware.** `/account` shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row; `/drive` is a driver-facing placeholder, auth-gated the same way. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
 | `/request` | Still a placeholder. Nothing links to it — rider flow not started. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
@@ -39,7 +40,7 @@ screens, and nothing that creates a ride in the first place.
 
 ## What does not exist
 
-Stripe (subscriptions or Connect) · Mapbox · a rider/driver role distinction · rider booking flow
+Stripe (subscriptions or Connect) · Mapbox · rider booking flow
 (which is also why `rides` has no `authenticated` write policy yet — nothing to write it against,
 and nothing that creates a ride for `complete-ride` to finish) · driver app.
 
@@ -75,9 +76,12 @@ month-to-date lock actually blocks a concurrent completion rather than racing.
 ✅ **Pushed to the live project** and **`database.types.ts` regenerated** against the real schema —
 all five tables typed, so the Supabase clients' generics are load-bearing rather than decorative.
 ✅ `commission_tiers` seeded on the live project (three bands).
-⬜ Add a `role` (or equivalent) so a `drivers` row is linked to an account with a rider/driver
-distinction — nothing marks that yet, which is why every post-login redirect currently goes to
-`/account` instead of splitting.
+✅ **Rider/driver distinction** — no `role` column: a driver identity is a matching `drivers` row,
+read via `getOwnDriverProfile()` (`apps/web/src/lib/drivers/`). A person can be both at once.
+`/account` shows a rider card to everyone and a driver card (with live compliance status) to
+anyone with a row; a new `(driver)/drive` placeholder is auth-gated the same way `/account` is.
+Post-login redirect still always lands on `/account` — deliberately not split yet, since neither
+`/request` nor `/drive` has real functionality to redirect into.
 
 **Phase 2 — money spine.** ✅ **`packages/pricing` implemented and tested** — bracketed commission
 with boundary tests at every tier edge (`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`,

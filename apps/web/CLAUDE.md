@@ -41,6 +41,7 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` today, `rides/`, `stripe/`, `maps/` to come |
+| `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
 | `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
@@ -77,6 +78,21 @@ sign-out), `errors.ts` (vendor error → RIDO voice), `result.ts` (`AuthResult`)
   redirect allowlist, custom SMTP, SMS provider. See `docs/architecture/auth-setup.md`.
 - `.env.local` (gitignored) holds the three Supabase values; copy `.env.example`. Never create or
   edit it through GitHub's web UI — that path ignores `.gitignore` and commits the secret.
+
+## Rider/driver
+
+**No `role` column exists or should be added.** A driver identity is simply a `drivers` row
+existing for the signed-in `auth_user_id` — check it with `getOwnDriverProfile()` from
+`src/lib/drivers/server.ts`, never a hand-rolled query. A person can hold both identities at
+once (there is no self-serve "become a driver" flow yet — the only route in today is an
+admin/vetting process under the service role), so a page that needs to know shows or hides
+content per identity; it never forces a single choice between them.
+
+`/account` is the one post-login landing page for everyone, and stays that way until `/request`
+or `/drive` has real functionality to redirect into — it's role-aware in its *content* (a rider
+card always, a driver card if `getOwnDriverProfile()` returns non-null), not in *where the login
+redirect sends you*. `/drive` is auth-gated the same way `/account` is: `requireUser()` in the
+page is the boundary, `proxy.ts`'s `PROTECTED_PREFIXES` is the clean-redirect convenience.
 
 ## Rules
 

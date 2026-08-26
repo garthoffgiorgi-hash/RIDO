@@ -110,5 +110,14 @@ jobs:
       # which this job has no reason to install. The shipped source is fully type-checked by the
       # step above. Removing --no-check without adding an install step fails here and passes
       # locally.
+      #
+      # BOTH scripts pass `--config supabase/functions/deno.json` explicitly, and must keep doing
+      # so. Deno discovers a config file by walking up from the CURRENT WORKING DIRECTORY, not
+      # from the entry file — so run from the repo root, it never finds the functions' import map
+      # on its own. Dropping the flag passes on a developer machine anyway, because root
+      # node_modules/ holds both @rido/pricing (a workspace symlink) and @supabase/supabase-js
+      # (apps/web's dependency), and Deno falls back to node_modules resolution. It then fails
+      # here, where there is no install step. That is not a hypothetical: it is exactly how this
+      # job first broke.
       - run: npm run check:functions:deno
       - run: npm run test:functions:deno

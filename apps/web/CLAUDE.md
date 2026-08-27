@@ -40,7 +40,8 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/app/(marketing)/` · `(rider)/` · `(driver)/` | Route groups, one flow each. No shared layout between rider and driver beyond the root |
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
-| `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` today, `rides/`, `stripe/`, `maps/` to come |
+| `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` and `maps/` today, `rides/` and `stripe/` to come |
+| `src/lib/maps/` | Mapbox. `server.ts` measures a trip (`server-only`); `browser.ts` searches places; `route.ts`/`places.ts`/`errors.ts` are pure and tested. See **Maps** below |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
@@ -93,6 +94,31 @@ or `/drive` has real functionality to redirect into — it's role-aware in its *
 card always, a driver card if `getOwnDriverProfile()` returns non-null), not in *where the login
 redirect sends you*. `/drive` is auth-gated the same way `/account` is: `requireUser()` in the
 page is the boundary, `proxy.ts`'s `PROTECTED_PREFIXES` is the clean-redirect convenience.
+
+## Maps
+
+**The browser may name two places. Only the server may measure the trip between them.** (ADR-0010)
+
+`measureRoute()` in `src/lib/maps/server.ts` is the only function allowed to produce the
+`distanceMeters`/`durationSeconds` that reach `quoteFare()` — it carries `import "server-only"`, so
+importing it from a client component is a build error. A client-supplied distance or duration is
+never an input to a price; a client-supplied *coordinate pair* is fine. Place search
+(`browser.ts`) runs client-side on the public token, because search isn't money.
+
+- **Two tokens.** `NEXT_PUBLIC_MAPBOX_TOKEN` is a Mapbox `pk.` token — public by design, restrict
+  it by URL. `MAPBOX_SECRET_TOKEN` is `sk.`, server-only, and never `NEXT_PUBLIC_`. They must be
+  separate: Mapbox restricts by `Referer`, and a server fetch sends none.
+- **Mapbox reports routing failures with HTTP 200** (`code: "NoRoute"`). `response.ok` is not the
+  check; `parseDirectionsBody` is.
+- **Mapbox returns floats; `quoteFare` throws on them.** The rounding happens once, in
+  `parseDirectionsBody`, and is tested. Never round at a call site.
+- `map.ts` will be **the only file importing `mapbox-gl`** — enforced by `check-context.mjs` rule
+  7. Not built yet; it needs a real token to verify. Markers are Midnight DOM elements, never a
+  recoloured default pin. A GL layer's `line-color` needs a literal colour, so it reads
+  `--color-midnight` off `:root` at runtime — the one documented exception to "never a hex in a
+  component", and it belongs in `map.ts` alone.
+- What `rides.distance_meters` should hold is **open** — routed estimate vs. measured actual. See
+  `docs/architecture/maps.md`. Nothing writes it yet.
 
 ## Rules
 

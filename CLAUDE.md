@@ -12,14 +12,19 @@ Supabase project, sign-up and sign-in by email or phone, session refresh, route 
 math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — and the
 **`complete-ride` Edge Function** that joins them.
 
-**Not built:** payments (Stripe), maps (Mapbox), the rider booking flow, the driver app. A fare is
-computable but nothing asks for one: quoting needs a routing engine for distance and duration.
+**Not built:** payments (Stripe), map *rendering*, the rider booking flow, the driver app. A fare
+is now computable end to end — `measureRoute()` supplies the distance and duration `quoteFare()`
+needs — but nothing asks for one yet.
 
-**Partially built:** the rider/driver distinction. `/account` now shows a rider card to everyone
-and a driver card to anyone with a `drivers` row (no `role` column — the row's existence *is* the
-identity, and a person can hold both). Post-login redirect still always lands on `/account`,
-because neither `/request` nor the new `/drive` placeholder has real functionality to split into
-yet.
+**Partially built:**
+
+- **The rider/driver distinction.** `/account` shows a rider card to everyone and a driver card to
+  anyone with a `drivers` row (no `role` column — the row's existence *is* the identity, and a
+  person can hold both). Post-login redirect still always lands on `/account`, because neither
+  `/request` nor the `/drive` placeholder has real functionality to split into yet.
+- **Mapbox.** `apps/web/src/lib/maps/` measures a trip and searches places, tested against
+  committed fixtures. **Nothing renders a map yet** — that needs a real token to verify, and there
+  is no Mapbox account. See `docs/architecture/maps.md`.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.
@@ -107,7 +112,10 @@ a new file is written, and the root CLAUDE.md is the only project memory that su
   re-checked by `npm run check:calibration`, never a live derivation. (ADR-0009)
 - Store currency as a float, or let a driver go active without passing the compliance gate.
 - Reintroduce the flat fee inside the pilot window.
-- Import a vendor SDK into a component, a page, or a route handler. Wrap it in `src/lib/` first.
+- Import a vendor SDK into a component, a page, or a route handler. Wrap it in `src/lib/` first —
+  `scripts/check-context.mjs` rule 7 now fails the build on this rather than trusting review.
+- Price a ride from a distance or duration a client sent you. The server measures the trip;
+  `measureRoute()` is the only source of those two numbers. (ADR-0010)
 - Ship a change to money math, a compliance rule, or pure `lib/` logic without its test.
 - Read `brand/exports/*.dc.html` into context — they're bundled artifacts, ~95% base64 fonts.
   Read the sibling `.md` handoff note instead.

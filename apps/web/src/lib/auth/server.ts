@@ -34,12 +34,21 @@ export async function requireUser(): Promise<User> {
 }
 
 /**
+ * Which kind of emailed link this is — signup confirmation, magic link, recovery, email change.
+ *
+ * Re-exported under our own name so `/auth/confirm` can name the type without importing
+ * `@supabase/supabase-js` itself: the vendor stops at this module's edge for types the same way
+ * it does for calls (ADR-0006), and `scripts/check-context.mjs` rule 7 enforces it.
+ */
+export type EmailLinkType = EmailOtpType;
+
+/**
  * Exchanges the `token_hash` from an emailed link for a session. Every email-link flow — sign-up
  * confirmation and sign-in link alike — completes here.
  */
 export async function completeEmailLink(
   tokenHash: string,
-  type: EmailOtpType,
+  type: EmailLinkType,
 ): Promise<AuthResult> {
   const supabase = await createServerClient();
   const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });

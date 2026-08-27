@@ -1,0 +1,33 @@
+{
+  "code": "Ok",
+  "uuid": "fixture0000000000000000000000000",
+  "waypoints": [
+    { "name": "Gilman Drive", "location": [-117.237, 32.8801], "distance": 12.4 },
+    { "name": "Torrey Pines Road", "location": [-117.2712, 32.8474], "distance": 8.1 }
+  ],
+  "routes": [
+    {
+      "weight_name": "auto",
+      "weight": 512.318,
+      "distance": 12345.678,
+      "duration": 1234.5,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-117.237, 32.8801],
+          [-117.2434, 32.8752],
+          [-117.2589, 32.8611],
+          [-117.2712, 32.8474]
+        ]
+      },
+      "legs": [
+        {
+          "distance": 12345.678,
+          "duration": 1234.5,
+          "summary": "Gilman Dr, Torrey Pines Rd",
+          "steps": []
+        }
+      ]
+    }
+  ]
+}

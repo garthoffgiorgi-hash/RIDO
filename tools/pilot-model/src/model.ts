@@ -19,6 +19,11 @@
  * Separated from the component so it can be tested (ADR-0007 — this is money math), and so the
  * revenue modelling that comes next has something to call.
  *
+ * **Every cost line is now an input, not a constant** — including card processing and Mapbox,
+ * which used to be (or would have been) hardcoded. The point of this tool is to explore an
+ * assumption by moving a slider, not by editing this file; a rate that can't move is a rate this
+ * tool can't help decide.
+ *
  * **Still a planning tool, not accounting.** It models the *average* driver, so the real blended
  * take runs a little higher: more drivers sit low in the bands, where the rate is higher, than
  * the average driver-month suggests. Directional.
@@ -36,11 +41,21 @@ import {
 } from "@rido/pricing";
 
 /**
- * Card processing, as basis points rather than 0.029: Stripe's ~2.9% + $0.30. Whether RIDO
- * absorbs this or passes it to drivers is Open Question #3 in docs/README.md — hence the toggle.
+ * Starting values for the two card-processing sliders, so the UI opens on Stripe's published
+ * headline rate rather than zero. Whether RIDO absorbs this or passes it to drivers is Open
+ * Question #3 in `docs/README.md` — both figures are sliders precisely so that question can be
+ * explored here instead of edited into this file.
  */
-const PROCESSING_RATE_BPS = 290;
-const PROCESSING_PER_RIDE_CENTS = 30;
+export const DEFAULT_PROCESSING_RATE_BPS = 290;
+export const DEFAULT_PROCESSING_PER_RIDE_CENTS = 30;
+
+/**
+ * Starting per-ride Mapbox cost, from the modelled consumption in
+ * `docs/business/mapbox-costs.md` (~1.6c/ride blended across Directions, Search Box and geocoding
+ * at 10,000 rides/month). A slider, not a constant: the real number depends on which Search Box
+ * billing model gets used and hasn't been measured against a real account yet.
+ */
+export const DEFAULT_MAPBOX_CENTS_PER_RIDE = 2;
 
 export interface ModelInputs {
   readonly horizonMonths: number;
@@ -50,6 +65,14 @@ export interface ModelInputs {
   readonly driversEnd: number;
   readonly ridesPerDriverStart: number;
   readonly ridesPerDriverEnd: number;
+
+  /**
+   * Riders don't drive revenue in this model — RIDO's revenue runs off driver-side fare volume
+   * regardless of how many distinct riders generated it. This ramp exists only to price rider
+   * acquisition below, the same way the driver ramp prices driver acquisition.
+   */
+  readonly ridersStart: number;
+  readonly ridersEnd: number;
 
   /** Steady-state monthly subscription, integer cents. */
   readonly flatFeeCents: number;
@@ -67,9 +90,15 @@ export interface ModelInputs {
 
   readonly insuranceFixedCents: number;
   readonly insurancePerRideCents: number;
+  /** docs/business/mapbox-costs.md. Zero disables the line entirely. */
+  readonly mapboxCentsPerRide: number;
+  /** Stripe's rate, in basis points — 290 is 2.9%. */
+  readonly processingRateBps: number;
+  readonly processingPerRideCents: number;
   readonly passProcessingToDrivers: boolean;
   readonly techCents: number;
   readonly acquisitionPerDriverCents: number;
+  readonly acquisitionPerRiderCents: number;
   readonly teamCents: number;
 
   /** Incumbent effective take, for the driver comparison. Basis points. */
@@ -79,10 +108,20 @@ export interface ModelInputs {
 export interface MonthRow {
   readonly month: number;
   readonly drivers: number;
+  readonly riders: number;
   readonly rides: number;
   readonly gmvCents: number;
   readonly revenueCents: number;
   readonly costCents: number;
+  /** Cost lines, exposed individually so an export can show where the money goes, not just the
+   *  total. Their sum always equals `costCents` — asserted in the test suite. */
+  readonly insuranceCents: number;
+  readonly mapboxCents: number;
+  readonly processingCents: number;
+  readonly techCents: number;
+  readonly driverAcquisitionCents: number;
+  readonly riderAcquisitionCents: number;
+  readonly teamCents: number;
   readonly netCents: number;
   readonly cumCents: number;
   readonly feeActive: boolean;
@@ -135,15 +174,21 @@ export function runModel(inputs: ModelInputs): ModelResult {
     driversEnd,
     ridesPerDriverStart,
     ridesPerDriverEnd,
+    ridersStart,
+    ridersEnd,
     flatFeeCents,
     feeOnAtDrivers,
     waiveCommissionBeforeFee,
     tiers,
     insuranceFixedCents,
     insurancePerRideCents,
+    mapboxCentsPerRide,
+    processingRateBps,
+    processingPerRideCents,
     passProcessingToDrivers,
     techCents,
     acquisitionPerDriverCents,
+    acquisitionPerRiderCents,
     teamCents,
     incumbentTakeBps,
   } = inputs;
@@ -155,6 +200,7 @@ export function runModel(inputs: ModelInputs): ModelResult {
   const rows: MonthRow[] = [];
   let cumCents = 0;
   let previousDrivers = 0;
+  let previousRiders = 0;
   let cashToFundCents = 0;
   let deepestMonth = 0;
   let breakEvenMonth: number | null = null;
@@ -164,6 +210,7 @@ export function runModel(inputs: ModelInputs): ModelResult {
   for (let month = 1; month <= horizonMonths; month++) {
     const t = horizonMonths > 1 ? (month - 1) / (horizonMonths - 1) : 0;
     const drivers = Math.round(lerp(driversStart, driversEnd, t));
+    const riders = Math.round(lerp(ridersStart, ridersEnd, t));
     const ridesPerDriver = lerp(ridesPerDriverStart, ridesPerDriverEnd, t);
 
     // Rides per driver is a rate, not money, so it interpolates as a float — but everything
@@ -198,12 +245,24 @@ export function runModel(inputs: ModelInputs): ModelResult {
     const revenueCents = drivers * revenuePerDriverCents;
 
     const insuranceCents = insuranceFixedCents + insurancePerRideCents * rides;
+    const mapboxCents = mapboxCentsPerRide * rides;
     const processingCents = passProcessingToDrivers
       ? 0
-      : applyBps(cents(gmvCents), bps(PROCESSING_RATE_BPS)) + rides * PROCESSING_PER_RIDE_CENTS;
+      : applyBps(cents(gmvCents), bps(processingRateBps)) + rides * processingPerRideCents;
+
     const newDrivers = Math.max(0, drivers - previousDrivers);
-    const marketingCents = newDrivers * acquisitionPerDriverCents;
-    const costCents = insuranceCents + processingCents + techCents + marketingCents + teamCents;
+    const newRiders = Math.max(0, riders - previousRiders);
+    const driverAcquisitionCents = newDrivers * acquisitionPerDriverCents;
+    const riderAcquisitionCents = newRiders * acquisitionPerRiderCents;
+
+    const costCents =
+      insuranceCents +
+      mapboxCents +
+      processingCents +
+      techCents +
+      driverAcquisitionCents +
+      riderAcquisitionCents +
+      teamCents;
 
     const netCents = revenueCents - costCents;
     cumCents += netCents;
@@ -218,10 +277,18 @@ export function runModel(inputs: ModelInputs): ModelResult {
     rows.push({
       month,
       drivers,
+      riders,
       rides,
       gmvCents,
       revenueCents,
       costCents,
+      insuranceCents,
+      mapboxCents,
+      processingCents,
+      techCents,
+      driverAcquisitionCents,
+      riderAcquisitionCents,
+      teamCents,
       netCents,
       cumCents,
       feeActive,
@@ -232,6 +299,7 @@ export function runModel(inputs: ModelInputs): ModelResult {
       feePerDriverCents,
     });
     previousDrivers = drivers;
+    previousRiders = riders;
   }
 
   const last = rows[rows.length - 1];

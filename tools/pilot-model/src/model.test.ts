@@ -30,15 +30,21 @@ const BASE: ModelInputs = {
   driversEnd: 200,
   ridesPerDriverStart: 20,
   ridesPerDriverEnd: 120,
+  ridersStart: 100,
+  ridersEnd: 1_000,
   flatFeeCents: 5_000,
   feeOnAtDrivers: 100,
   waiveCommissionBeforeFee: false,
   tiers: TIERS,
   insuranceFixedCents: 300_000,
   insurancePerRideCents: 40,
+  mapboxCentsPerRide: 2,
+  processingRateBps: 290,
+  processingPerRideCents: 30,
   passProcessingToDrivers: false,
   techCents: 100_000,
   acquisitionPerDriverCents: 3_000,
+  acquisitionPerRiderCents: 500,
   teamCents: 0,
   incumbentTakeBps: 3000,
 };
@@ -144,6 +150,98 @@ describe("the driver comparison", () => {
       steady.grossPerDriverCents - steady.revenuePerDriverCents,
       steady.driverTakeHomeCents,
     );
+  });
+});
+
+describe("Mapbox is a per-ride cost, not a constant", () => {
+  it("is zero when the per-ride rate is zero", () => {
+    const { rows } = run({ mapboxCentsPerRide: 0 });
+    assert.ok(rows.every((r) => r.mapboxCents === 0));
+  });
+
+  it("scales linearly with ride volume", () => {
+    const { rows } = run({ mapboxCentsPerRide: 3 });
+    for (const row of rows) {
+      assert.equal(row.mapboxCents, row.rides * 3);
+    }
+  });
+
+  it("adds to total cost rather than replacing another line", () => {
+    const withIt = run({ mapboxCentsPerRide: 5 });
+    const without = run({ mapboxCentsPerRide: 0 });
+    for (let i = 0; i < withIt.rows.length; i++) {
+      assert.equal(withIt.rows[i].costCents - without.rows[i].costCents, withIt.rows[i].rides * 5);
+    }
+  });
+});
+
+describe("card processing is an input, not a hardcoded constant", () => {
+  it("a higher rate charges more on the same volume", () => {
+    const low = run({ processingRateBps: 100, processingPerRideCents: 0 });
+    const high = run({ processingRateBps: 500, processingPerRideCents: 0 });
+    const lastLow = low.rows[low.rows.length - 1];
+    const lastHigh = high.rows[high.rows.length - 1];
+    assert.ok(lastHigh.processingCents > lastLow.processingCents);
+  });
+
+  it("still zeroes out when passed to drivers, whatever the rate", () => {
+    const { rows } = run({
+      processingRateBps: 999,
+      processingPerRideCents: 99,
+      passProcessingToDrivers: true,
+    });
+    assert.ok(rows.every((r) => r.processingCents === 0));
+  });
+});
+
+describe("rider acquisition mirrors driver acquisition", () => {
+  // Month 1 always charges acquisition for the starting cohort — previousRiders (like
+  // previousDrivers) begins at zero, so ridersStart itself counts as "new" on the first row. Same
+  // property the driver side already had; this is the first test to exercise it either way.
+  it("costs nothing past month 1 when the rider count never grows", () => {
+    const { rows } = run({ ridersStart: 500, ridersEnd: 500, acquisitionPerRiderCents: 1_000 });
+    assert.equal(rows[0].riderAcquisitionCents, 500 * 1_000);
+    assert.ok(rows.slice(1).every((r) => r.riderAcquisitionCents === 0));
+  });
+
+  it("charges the acquisition rate on every new rider added that month", () => {
+    const { rows } = run({ ridersStart: 0, ridersEnd: 1_100, acquisitionPerRiderCents: 200 });
+    let previous = 0;
+    for (const row of rows) {
+      const newRiders = Math.max(0, row.riders - previous);
+      assert.equal(row.riderAcquisitionCents, newRiders * 200);
+      previous = row.riders;
+    }
+  });
+
+  it("is independent of driver acquisition — one growing doesn't change the other's cost", () => {
+    const { rows } = run({
+      driversStart: 0,
+      driversEnd: 100,
+      acquisitionPerDriverCents: 1_000,
+      ridersStart: 0,
+      ridersEnd: 0,
+      acquisitionPerRiderCents: 1_000,
+    });
+    assert.ok(rows.every((r) => r.riderAcquisitionCents === 0));
+    assert.ok(rows.some((r) => r.driverAcquisitionCents > 0));
+  });
+});
+
+describe("the exposed cost lines sum to the total", () => {
+  it("costCents always equals the sum of its components", () => {
+    for (const row of run().rows) {
+      assert.equal(
+        row.costCents,
+        row.insuranceCents +
+          row.mapboxCents +
+          row.processingCents +
+          row.techCents +
+          row.driverAcquisitionCents +
+          row.riderAcquisitionCents +
+          row.teamCents,
+      );
+    }
   });
 });
 

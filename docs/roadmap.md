@@ -29,7 +29,7 @@ screens, and nothing that creates a ride in the first place.
 | Maps | **The measuring half is built.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates. Pure request-building and response-parsing are tested against committed fixtures (41 tests). **Map rendering is not built** and no Mapbox account exists. ADR-0010, `architecture/maps.md`. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
-| `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 15 tests on `../tools/pilot-model/src/model.ts` |
+| `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 24 tests on `../tools/pilot-model/src/model.ts`. Full monthly P&L now — driver *and* rider acquisition cost, Mapbox and card-processing as sliders (not constants), an adjustable horizon, one-click CSV export |
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Fare quoting (`quoteFare`) and the Prop 22 floor alongside the commission math. Bracketed commission, tier validation, flat-fee resolution. 95 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
@@ -119,7 +119,7 @@ sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../br
 ✅ **`gradComm()` is retired.** `tools/pilot-model` is a real workspace (`npm run model`) that
 calls `@rido/pricing` instead of re-implementing bracketed commission in floating-point dollars.
 The flat fee now turns on at a driver-count threshold — the traction signal ADR-0003 describes —
-rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/model.ts` with 15 tests, and fixing a
+rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/model.ts` with 24 tests, and fixing a
 display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
 **Phase 3 — surfaces.** ✅ Marketing pages. ✅ The fare a rider is quoted is computable

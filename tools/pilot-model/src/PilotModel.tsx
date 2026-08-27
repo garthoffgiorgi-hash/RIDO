@@ -13,7 +13,14 @@ import {
   YAxis,
 } from "recharts";
 import { BPS_DENOMINATOR } from "@rido/pricing";
-import { type ModelInputs, runModel } from "./model.ts";
+import {
+  DEFAULT_MAPBOX_CENTS_PER_RIDE,
+  DEFAULT_PROCESSING_PER_RIDE_CENTS,
+  DEFAULT_PROCESSING_RATE_BPS,
+  type ModelInputs,
+  type ModelResult,
+  runModel,
+} from "./model.ts";
 import { PUBLISHED_TIERS } from "./published-tiers.generated.ts";
 
 /* ------------------------------------------------------------------ */
@@ -56,6 +63,129 @@ const moneyK = (c: number) => {
 const moneyExact = (c: number) =>
   (c < 0 ? "-$" : "$") + (Math.abs(c) / 100).toLocaleString("en-US", { minimumFractionDigits: 2 });
 const pctBps = (b: number, digits = 1) => ((b / BPS_DENOMINATOR) * 100).toFixed(digits) + "%";
+
+/* ------------------------------------------------------------------ */
+/*  Export — everything the model knows, in one CSV.                   */
+/*                                                                     */
+/*  Presentation, not money math: it formats values the model already */
+/*  computed, the same way the chart labels above do. No arithmetic on */
+/*  a fare happens here — see model.ts for that, and its tests for the */
+/*  invariant this relies on (every cost line sums to costCents).      */
+/* ------------------------------------------------------------------ */
+
+const csvDollars = (c: number) => (c / 100).toFixed(2);
+const csvPct = (b: number) => (b / BPS_DENOMINATOR) * 100;
+/** Escapes a value for one CSV cell — only labels and booleans ever need it here. */
+const csvCell = (v: string | number | boolean): string =>
+  typeof v === "string" && /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : String(v);
+
+function buildCsv(inputs: ModelInputs, result: ModelResult): string {
+  const lines: string[] = [];
+  const row = (...cells: (string | number | boolean)[]) => lines.push(cells.map(csvCell).join(","));
+
+  row("RIDO pilot economics", `exported ${new Date().toISOString()}`);
+  lines.push("");
+
+  row("INPUTS");
+  row("Horizon", inputs.horizonMonths, "months");
+  row("Avg gross fare", csvDollars(inputs.fareCents));
+  row("Drivers — start", inputs.driversStart);
+  row(`Drivers — month ${inputs.horizonMonths}`, inputs.driversEnd);
+  row("Riders — start", inputs.ridersStart);
+  row(`Riders — month ${inputs.horizonMonths}`, inputs.ridersEnd);
+  row("Rides/driver/mo — start", inputs.ridesPerDriverStart);
+  row(`Rides/driver/mo — month ${inputs.horizonMonths}`, inputs.ridesPerDriverEnd);
+  row("Flat fee turns on at (drivers)", inputs.feeOnAtDrivers);
+  row("Steady-state flat fee", csvDollars(inputs.flatFeeCents));
+  row("Waive commission before fee", inputs.waiveCommissionBeforeFee);
+  inputs.tiers.forEach((t, i) => {
+    const upper = t.upperBoundCents === null ? "no cap" : csvDollars(t.upperBoundCents);
+    row(`Commission tier ${i + 1}`, `${csvPct(t.rateBps).toFixed(1)}% up to ${upper}`);
+  });
+  row("Insurance — fixed/mo", csvDollars(inputs.insuranceFixedCents));
+  row("Insurance — per ride", csvDollars(inputs.insurancePerRideCents));
+  row("Mapbox — per ride", csvDollars(inputs.mapboxCentsPerRide));
+  row("Card processing rate", `${csvPct(inputs.processingRateBps).toFixed(2)}%`);
+  row("Card processing — per ride", csvDollars(inputs.processingPerRideCents));
+  row("Card processing passed to drivers", inputs.passProcessingToDrivers);
+  row("Tech / hosting per mo", csvDollars(inputs.techCents));
+  row("Acquisition cost / new driver", csvDollars(inputs.acquisitionPerDriverCents));
+  row("Acquisition cost / new rider", csvDollars(inputs.acquisitionPerRiderCents));
+  row("Team / payroll per mo", csvDollars(inputs.teamCents));
+  row("Incumbent effective take", `${csvPct(inputs.incumbentTakeBps).toFixed(1)}%`);
+  lines.push("");
+
+  row("SUMMARY");
+  row("Peak cash to fund", csvDollars(result.cashToFundCents), `month ${result.deepestMonth}`);
+  row("Monthly break-even", result.breakEvenMonth ?? "not reached in horizon");
+  row("Cash recouped", result.cashRecoupedMonth ?? "not reached in horizon");
+  row("Flat fee starts", result.feeStartsMonth ?? "not reached in horizon");
+  row("Steady-state blended take", `${csvPct(result.steady.blendedTakeBps).toFixed(1)}%`);
+  row("Steady-state driver take-home/mo", csvDollars(result.steady.driverTakeHomeCents));
+  row("Steady-state incumbent take-home/mo", csvDollars(result.steady.incumbentTakeHomeCents));
+  row("Steady-state RIDO revenue/driver/mo", csvDollars(result.steady.revenuePerDriverCents));
+  lines.push("");
+
+  row("MONTHLY");
+  row(
+    "Month",
+    "Phase",
+    "Drivers",
+    "Riders",
+    "Rides",
+    "GMV",
+    "RIDO revenue",
+    "Commission/driver",
+    "Fee/driver",
+    "Insurance",
+    "Mapbox",
+    "Card processing",
+    "Tech/hosting",
+    "Driver acquisition",
+    "Rider acquisition",
+    "Team",
+    "Total cost",
+    "Net",
+    "Cumulative cash",
+  );
+  for (const r of result.rows) {
+    row(
+      r.month,
+      r.phase,
+      r.drivers,
+      r.riders,
+      r.rides,
+      csvDollars(r.gmvCents),
+      csvDollars(r.revenueCents),
+      csvDollars(r.commissionPerDriverCents),
+      csvDollars(r.feePerDriverCents),
+      csvDollars(r.insuranceCents),
+      csvDollars(r.mapboxCents),
+      csvDollars(r.processingCents),
+      csvDollars(r.techCents),
+      csvDollars(r.driverAcquisitionCents),
+      csvDollars(r.riderAcquisitionCents),
+      csvDollars(r.teamCents),
+      csvDollars(r.costCents),
+      csvDollars(r.netCents),
+      csvDollars(r.cumCents),
+    );
+  }
+
+  return lines.join("\n");
+}
+
+function downloadModelCsv(inputs: ModelInputs, result: ModelResult): void {
+  const blob = new Blob([buildCsv(inputs, result)], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `rido-pilot-model-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
 
 /* ------- small UI atoms ------- */
 function Eyebrow({ children, color = C.inkFaint }: { children: React.ReactNode; color?: string }) {
@@ -290,11 +420,15 @@ const btn: React.CSSProperties = {
 export default function RidoPilotModel() {
   // Market ramp
   const [fareCents, setFareCents] = useState(1_800);
-  const [horizonMonths] = useState(12);
+  const [horizonMonths, setHorizonMonths] = useState(12);
   const [driversStart, setDriversStart] = useState(25);
   const [driversEnd, setDriversEnd] = useState(200);
   const [ridesStart, setRidesStart] = useState(20);
   const [ridesEnd, setRidesEnd] = useState(120);
+  // Riders don't feed revenue (that runs off driver-side fare volume) — this ramp exists only to
+  // price rider acquisition below, the same way the driver ramp prices driver acquisition.
+  const [ridersStart, setRidersStart] = useState(150);
+  const [ridersEnd, setRidersEnd] = useState(2_500);
 
   // Take model. Tiers start at the seeded values and are then free to move — exploring rates is
   // the entire purpose of this tool. The starting positions are generated from the seed, so
@@ -310,9 +444,15 @@ export default function RidoPilotModel() {
   // Costs
   const [insuranceFixedCents, setInsuranceFixedCents] = useState(300_000);
   const [insurancePerRideCents, setInsurancePerRideCents] = useState(40);
+  const [mapboxCentsPerRide, setMapboxCentsPerRide] = useState(DEFAULT_MAPBOX_CENTS_PER_RIDE);
+  const [processingRateBps, setProcessingRateBps] = useState(DEFAULT_PROCESSING_RATE_BPS);
+  const [processingPerRideCents, setProcessingPerRideCents] = useState(
+    DEFAULT_PROCESSING_PER_RIDE_CENTS,
+  );
   const [passProcessingToDrivers, setPassProcessing] = useState(false);
   const [techCents, setTechCents] = useState(100_000);
   const [acquisitionPerDriverCents, setAcquisitionCents] = useState(3_000);
+  const [acquisitionPerRiderCents, setAcquisitionPerRiderCents] = useState(500);
   const [teamCents, setTeamCents] = useState(0);
 
   // Comparison
@@ -342,15 +482,21 @@ export default function RidoPilotModel() {
     driversEnd,
     ridesPerDriverStart: ridesStart,
     ridesPerDriverEnd: ridesEnd,
+    ridersStart,
+    ridersEnd,
     flatFeeCents,
     feeOnAtDrivers,
     waiveCommissionBeforeFee,
     tiers,
     insuranceFixedCents,
     insurancePerRideCents,
+    mapboxCentsPerRide,
+    processingRateBps,
+    processingPerRideCents,
     passProcessingToDrivers,
     techCents,
     acquisitionPerDriverCents,
+    acquisitionPerRiderCents,
     teamCents,
     incumbentTakeBps,
   };
@@ -386,13 +532,39 @@ export default function RidoPilotModel() {
       }}
     >
       <div style={{ maxWidth: 1080, margin: "0 auto" }}>
-        <div style={{ marginBottom: 18 }}>
+        <div
+          style={{
+            marginBottom: 18,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
             <span style={{ font: `800 21px/1 ${SANS}`, letterSpacing: "-0.02em" }}>RIDO</span>
             <span style={{ font: `500 13px/1 ${SANS}`, color: C.inkSoft }}>
               pilot economics — does the no-fee launch survive the fixed-cost wall?
             </span>
           </div>
+          {result ? (
+            <button
+              type="button"
+              onClick={() => downloadModelCsv(inputs, result)}
+              style={{
+                padding: "8px 14px",
+                font: `600 12px/1 ${SANS}`,
+                color: "#fff",
+                background: C.ink,
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+              }}
+            >
+              Export CSV
+            </button>
+          ) : null}
         </div>
 
         {modelError ? (
@@ -470,6 +642,14 @@ export default function RidoPilotModel() {
               >
                 <Group title={`Market ramp (month 1 → ${horizonMonths})`}>
                   <Slider
+                    label="Horizon"
+                    value={horizonMonths}
+                    set={(v) => setHorizonMonths(Math.round(v))}
+                    min={3}
+                    max={36}
+                    unit="mo"
+                  />
+                  <Slider
                     label="Avg gross fare"
                     value={fareCents}
                     set={setFareCents}
@@ -495,6 +675,34 @@ export default function RidoPilotModel() {
                     step={10}
                     unit="drv"
                   />
+                  <Slider
+                    label="Riders — start"
+                    value={ridersStart}
+                    set={setRidersStart}
+                    min={20}
+                    max={2000}
+                    step={10}
+                    unit="rdr"
+                  />
+                  <Slider
+                    label={`Riders — month ${horizonMonths}`}
+                    value={ridersEnd}
+                    set={setRidersEnd}
+                    min={100}
+                    max={20_000}
+                    step={100}
+                    unit="rdr"
+                  />
+                  <div
+                    style={{
+                      font: `400 11px/1.45 ${SANS}`,
+                      color: C.inkFaint,
+                      margin: "-6px 0 12px",
+                    }}
+                  >
+                    Riders don't drive revenue here — that runs off driver-side fares regardless of
+                    rider count. This ramp only prices rider acquisition, below.
+                  </div>
                   <Slider
                     label="Rides/driver/mo — start"
                     value={ridesStart}
@@ -633,6 +841,33 @@ export default function RidoPilotModel() {
                     step={5}
                     fmt={moneyExact}
                   />
+                  <Slider
+                    label="Mapbox — per ride"
+                    value={mapboxCentsPerRide}
+                    set={setMapboxCentsPerRide}
+                    min={0}
+                    max={20}
+                    step={1}
+                    fmt={moneyExact}
+                  />
+                  <Slider
+                    label="Card processing rate"
+                    value={processingRateBps}
+                    set={setProcessingRateBps}
+                    min={0}
+                    max={500}
+                    step={10}
+                    fmt={(v) => pctBps(v, 2)}
+                  />
+                  <Slider
+                    label="Card processing — per ride"
+                    value={processingPerRideCents}
+                    set={setProcessingPerRideCents}
+                    min={0}
+                    max={100}
+                    step={5}
+                    fmt={moneyExact}
+                  />
                   <Toggle checked={passProcessingToDrivers} set={setPassProcessing}>
                     Pass card-processing fees to drivers
                   </Toggle>
@@ -652,6 +887,15 @@ export default function RidoPilotModel() {
                     min={0}
                     max={20_000}
                     step={500}
+                    fmt={money}
+                  />
+                  <Slider
+                    label="Acquisition cost / new rider"
+                    value={acquisitionPerRiderCents}
+                    set={setAcquisitionPerRiderCents}
+                    min={0}
+                    max={10_000}
+                    step={250}
                     fmt={money}
                   />
                   <Slider

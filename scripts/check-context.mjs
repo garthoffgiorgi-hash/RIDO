@@ -13,6 +13,7 @@
  *   4. Every `ADR-NNNN` mention has a matching file in docs/decisions/.
  *   5. Every `.dc.html` export has a handoff note (sibling file, or one per bundle folder).
  *   6. Pricing constants appear only where they're allowed to.
+ *   7. No vendor SDK is imported outside apps/web/src/lib/ (ADR-0006).
  *
  * brand/exports/<bundle>/** is vendor content — a Design handoff bundle, not repo-authored.
  * It keeps its own internal cross-references (from Design's own snapshot, not this repo's
@@ -152,6 +153,42 @@ for (const file of codeFiles) {
   for (const [pattern, label] of PRICING_LITERALS) {
     if (pattern.test(src)) {
       fail(r, `looks like a hardcoded ${label} — read it from commission_tiers instead`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------- 7
+// ADR-0006: a third-party SDK is called from apps/web/src/lib/<domain>/ and nowhere else, so
+// each vendor's rules have one home and one diff. That ADR closes with "enforcement is by review
+// and by this ADR, not by a tool — worth adding when the second module lands." src/lib/maps/ is
+// the second module; this is that tool.
+//
+// Deliberately a name check on the import specifier, not a resolver: the failure it catches is
+// someone reaching for `mapbox-gl` inside a component, which is visible in the import line.
+const VENDOR_SDKS = [/^mapbox-gl$/, /^@mapbox\//, /^@supabase\//, /^stripe$/, /^@stripe\//];
+const VENDOR_IMPORT =
+  /(?:^|\n)\s*(?:import|export)[\s\S]{0,200}?from\s*["']([^"']+)["']|require\(\s*["']([^"']+)["']\s*\)/g;
+// src/proxy.ts is wiring, not a consumer — the same category as src/lib/supabase/, which is
+// exactly what it would be a part of if Next.js let it live anywhere else. The framework requires
+// this one file at this one path, and its whole job is the request/response cookie plumbing that
+// makes a Supabase client work in middleware. Narrow on purpose: this exact path, not a directory.
+const VENDOR_ALLOWED = [/^apps\/web\/src\/proxy\.ts$/];
+const webSource = files.filter(
+  (f) => /^apps\/web\/src\//.test(rel(f)) && /\.(ts|tsx)$/.test(f) && !f.endsWith(".test.ts"),
+);
+for (const file of webSource) {
+  const r = rel(file);
+  if (r.startsWith("apps/web/src/lib/")) continue;
+  if (VENDOR_ALLOWED.some((p) => p.test(r))) continue;
+  const src = readFileSync(file, "utf8");
+  for (const m of src.matchAll(VENDOR_IMPORT)) {
+    const specifier = m[1] ?? m[2];
+    if (!specifier) continue;
+    if (VENDOR_SDKS.some((p) => p.test(specifier))) {
+      fail(
+        r,
+        `imports the vendor SDK "${specifier}" directly — wrap it in apps/web/src/lib/<domain>/ and call that instead (ADR-0006)`,
+      );
     }
   }
 }

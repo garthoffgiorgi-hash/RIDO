@@ -1,0 +1,54 @@
+{
+  "type": "FeatureCollection",
+  "attribution": "Mapbox",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "fixture-geisel",
+      "geometry": { "type": "Point", "coordinates": [-117.2374, 32.8811] },
+      "properties": {
+        "mapbox_id": "dXJuOm1ieHBvaTpmaXh0dXJlLWdlaXNlbA",
+        "name": "Geisel Library",
+        "feature_type": "poi",
+        "address": "9500 Gilman Dr",
+        "full_address": "9500 Gilman Dr, La Jolla, California 92093, United States",
+        "place_formatted": "La Jolla, California 92093, United States",
+        "poi_category": ["library", "education"],
+        "relevance": 1,
+        "context": {
+          "country": { "name": "United States", "country_code": "US" },
+          "region": { "name": "California", "region_code": "CA" },
+          "place": { "name": "La Jolla" },
+          "postcode": { "name": "92093" }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "fixture-price-center",
+      "geometry": { "type": "Point", "coordinates": [-117.2371, 32.8797] },
+      "properties": {
+        "mapbox_id": "dXJuOm1ieHBvaTpmaXh0dXJlLXByaWNl",
+        "name": "Price Center",
+        "feature_type": "poi",
+        "full_address": "9500 Gilman Dr, La Jolla, California 92093, United States",
+        "relevance": 0.94,
+        "context": {
+          "country": { "name": "United States", "country_code": "US" },
+          "region": { "name": "California", "region_code": "CA" }
+        }
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "fixture-region-only",
+      "geometry": { "type": "Point", "coordinates": [-117.2713, 32.8474] },
+      "properties": {
+        "mapbox_id": "dXJuOm1ieHBsYzpmaXh0dXJlLWxham9s",
+        "name": "La Jolla",
+        "feature_type": "place",
+        "relevance": 0.8
+      }
+    }
+  ]
+}

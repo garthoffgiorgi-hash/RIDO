@@ -4,7 +4,7 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-26** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-08-27** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
@@ -26,6 +26,7 @@ screens, and nothing that creates a ride in the first place.
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
 | `/account`, `/drive` | **Role-aware.** `/account` shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row; `/drive` is a driver-facing placeholder, auth-gated the same way. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
 | `/request` | Still a placeholder. Nothing links to it — rider flow not started. |
+| Maps | **The measuring half is built.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates. Pure request-building and response-parsing are tested against committed fixtures (41 tests). **Map rendering is not built** and no Mapbox account exists. ADR-0010, `architecture/maps.md`. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
 | `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 15 tests on `../tools/pilot-model/src/model.ts` |
@@ -40,7 +41,8 @@ screens, and nothing that creates a ride in the first place.
 
 ## What does not exist
 
-Stripe (subscriptions or Connect) · Mapbox · rider booking flow
+Stripe (subscriptions or Connect) · map *rendering* (`mapbox-gl` isn't installed; there is no
+Mapbox account, and a map you can't render is a map you can't verify) · rider booking flow
 (which is also why `rides` has no `authenticated` write policy yet — nothing to write it against,
 and nothing that creates a ride for `complete-ride` to finish) · driver app.
 
@@ -104,8 +106,10 @@ RIDO driver beats an incumbent driver on every trip shape tested even at our wor
 and there is a **low-volume dead zone** once the flat fee turns on — break-even runs from 20 to 94
 trips/month across the 35–50% incumbent-take range, and vanishes entirely during the pilot.
 ⬜ Decide what to do about that dead zone. Needs market research, not code.
-⬜ A `quote-ride` Edge Function. Blocked on Mapbox (nothing supplies distance/duration) and on the
-booking flow (nothing asks for a quote).
+⬜ A `quote-ride` Edge Function. **No longer blocked on Mapbox** — `measureRoute()` supplies
+distance and duration, and `apps/web/src/lib/maps/route.ts` is Next-free with `.ts`-extensioned
+imports so Deno can import it directly. Blocked only on the booking flow now: nothing asks for a
+quote.
 ✅ **The marketing percentage is derived**, not hand-maintained: `supabase/seed/commission_tiers.sql`
 → `scripts/generate-published-tiers.mjs` → `apps/web/src/lib/marketing/figures.ts` →
 `commissionForRide`. Verified by repricing the seed and watching every page figure move, including
@@ -119,10 +123,10 @@ rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/
 display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
 **Phase 3 — surfaces.** ✅ Marketing pages. ✅ The fare a rider is quoted is computable
-(`quoteFare` + the seeded card) — what's missing is a surface to show it on and a routing engine to
-supply distance and duration. ⬜ Rider request flow (map-first, bottom sheet, fare
-up front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier
-progress). ⬜ Mapbox.
+(`quoteFare` + the seeded card) **and now measurable** (`measureRoute` + Mapbox Directions) — what's
+missing is a surface to show it on. 🔶 **Mapbox** — the vendor boundary is built and tested; map
+rendering is not, and needs an account. ⬜ Rider request flow (map-first, bottom sheet, fare up
+front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier progress).
 
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
 inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —

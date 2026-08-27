@@ -23,6 +23,9 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Supabase Auth dashboard config (email templates, SMTP, SMS, redirect allowlist) | `architecture/auth-setup.md` |
 | Where money math lives and how it's shared across runtimes | `decisions/0005-monorepo-shaped-layout.md` |
 | Why vendor SDKs are wrapped rather than called from components | `decisions/0006-vendor-sdks-behind-app-modules.md` |
+| Why a client may name a place but never measure a trip | `decisions/0010-client-names-places-server-measures-trip.md` |
+| Which Mapbox products, the two-token model, what `rides.distance_meters` should hold | `architecture/maps.md` |
+| What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |
 | The wedge, the mission, who it's for, the beachhead | `business/overview.md` |

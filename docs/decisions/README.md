@@ -33,3 +33,8 @@ What this costs, what it rules out, what now has to be true.
 | [0003](0003-pilot-fee-waiver.md) | 6-month fee waiver, traction-gated turn-on | Accepted |
 | [0004](0004-repo-is-canonical.md) | The repo is canonical; the vault is upstream thinking | Accepted |
 | [0005](0005-monorepo-shaped-layout.md) | Monorepo-shaped layout, no monorepo tooling yet | Accepted |
+| [0006](0006-vendor-sdks-behind-app-modules.md) | Vendor SDKs are reached through an app-owned module | Accepted |
+| [0007](0007-testing-bar.md) | What must be tested before it ships | Accepted |
+| [0008](0008-completion-is-a-bounded-critical-section.md) | Ride completion is a bounded critical section | Accepted |
+| [0009](0009-rido-quotes-the-fare.md) | RIDO quotes the fare; the discount is a calibration target | Accepted |
+| [0010](0010-client-names-places-server-measures-trip.md) | The client names places; the server measures the trip | Accepted |

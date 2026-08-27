@@ -1,6 +1,5 @@
-import type { EmailOtpType } from "@supabase/supabase-js";
 import { type NextRequest, NextResponse } from "next/server";
-import { completeEmailLink } from "@/lib/auth/server";
+import { completeEmailLink, type EmailLinkType } from "@/lib/auth/server";
 
 /**
  * Where every emailed auth link lands. Supabase's own templates must be pointed here — their
@@ -9,7 +8,7 @@ import { completeEmailLink } from "@/lib/auth/server";
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const tokenHash = searchParams.get("token_hash");
-  const type = searchParams.get("type") as EmailOtpType | null;
+  const type = searchParams.get("type") as EmailLinkType | null;
 
   if (!tokenHash || !type) {
     return NextResponse.redirect(`${origin}/login?error=link_invalid`);

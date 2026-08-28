@@ -38,3 +38,4 @@ What this costs, what it rules out, what now has to be true.
 | [0008](0008-completion-is-a-bounded-critical-section.md) | Ride completion is a bounded critical section | Accepted |
 | [0009](0009-rido-quotes-the-fare.md) | RIDO quotes the fare; the discount is a calibration target | Accepted |
 | [0010](0010-client-names-places-server-measures-trip.md) | The client names places; the server measures the trip | Accepted |
+| [0011](0011-what-a-completed-ride-records.md) | What a completed ride records | Accepted |

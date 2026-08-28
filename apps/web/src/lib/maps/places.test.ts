@@ -35,15 +35,16 @@ describe("buildForwardSearchUrl", () => {
     assert.equal(params.get("proximity"), null);
   });
 
-  // Storing a result is a separately-billed product and a terms question, so it has to be asked
-  // for explicitly — never defaulted on. See docs/architecture/maps.md.
-  it("only asks for a storable result when told to", () => {
-    const off = new URL(buildForwardSearchUrl({ query: "x", accessToken: TOKEN })).searchParams;
-    assert.equal(off.get("permanent"), null);
+  // Search Box has no storable tier — permanent storage rights are a Geocoding API feature, and
+  // the `permanent` flag this module used to send was a parameter Search Box does not accept. It
+  // read as a safety mechanism and did nothing. This asserts it is gone and stays gone; the
+  // storable path is geocode.ts, which is a different API. (ADR-0011)
+  it("never asks Search Box for a storable result — there is no such thing", () => {
+    const forward = new URL(buildForwardSearchUrl({ query: "x", accessToken: TOKEN })).searchParams;
+    assert.equal(forward.get("permanent"), null);
 
-    const on = new URL(buildForwardSearchUrl({ query: "x", accessToken: TOKEN, permanent: true }))
-      .searchParams;
-    assert.equal(on.get("permanent"), "true");
+    const reverse = new URL(buildReverseUrl({ at: UCSD, accessToken: TOKEN })).searchParams;
+    assert.equal(reverse.get("permanent"), null);
   });
 
   it("respects an explicit limit", () => {

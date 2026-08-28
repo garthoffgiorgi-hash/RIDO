@@ -41,7 +41,7 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` and `maps/` today, `rides/` and `stripe/` to come |
-| `src/lib/maps/` | Mapbox. `server.ts` measures a trip (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
+| `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
@@ -122,8 +122,14 @@ never an input to a price; a client-supplied *coordinate pair* is fine. Place se
   one Client Component allowed to reach it. `/dev/maps` (auth-gated, 404s outside development)
   proves the whole path — search, `measureRoute()`, `quoteFare()`, render — against a real Mapbox
   account. See `docs/architecture/maps.md`.
-- What `rides.distance_meters` should hold is **open** — routed estimate vs. measured actual. See
-  `docs/architecture/maps.md`. Nothing writes it yet.
+- **Search Box results are display-only** — they may not be stored at any price. The storable path
+  is `geocode.ts` (Geocoding v6, always `permanent=true`), reached through
+  `resolveStorableCoordinates()` in `server.ts`. It is **built and switched off**: the pilot stores
+  `rides.pickup_address`/`dropoff_address` and defers coordinates to a later backfill. Only the
+  `/dev/maps` button calls it, because it is the one call that spends real money.
+- `rides.distance_meters`/`duration_seconds` hold the **actual** trip, never the routed estimate —
+  duration from `completed_at − started_at`, distance from a GPS trace once the driver app exists.
+  The fare is never recomputed from either. (ADR-0011)
 
 ## Rules
 

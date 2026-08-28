@@ -12,6 +12,15 @@
  * `/forward` has no session-scoped typeahead, so callers debounce instead of firing per keystroke.
  * Revisit if search volume ever approaches the request allowance; the switch is confined to this
  * file. Figures and dates: `docs/business/mapbox-costs.md`.
+ *
+ * **Everything this file returns is display-only.** Search Box results may not be stored — at any
+ * price, under any parameter. Permanent storage rights are a *Geocoding API* feature, and Search
+ * Box has no storable tier. A coordinate from here may be shown, mapped, and used to ask Mapbox
+ * for a route; it may never reach a database column.
+ *
+ * This module used to take a `permanent` flag, which Search Box does not accept — it read as a
+ * safety mechanism and did nothing, which is more dangerous than its absence. The storable path is
+ * `./geocode.ts`, and it is a different API. (ADR-0011)
  */
 
 import { failed, type MapsResult } from "./result.ts";
@@ -29,20 +38,10 @@ export interface ForwardSearchInput {
   /** Bias results toward here — usually the map centre. Cheap, and hugely improves relevance. */
   readonly near?: Coordinates;
   readonly limit?: number;
-  /**
-   * Whether the result may be stored.
-   *
-   * Mapbox's default terms are "temporary": you may show a result and put it on a map, but you may
-   * not persist the coordinates. Storing them — which `rides.pickup_lat/lng` does — is a separate,
-   * separately-billed product. Left as an explicit argument rather than a default because it costs
-   * real money and because getting it wrong is a terms violation rather than a bug.
-   * See `docs/architecture/maps.md`.
-   */
-  readonly permanent?: boolean;
 }
 
 export function buildForwardSearchUrl(input: ForwardSearchInput): string {
-  const { query, accessToken, near, limit, permanent } = input;
+  const { query, accessToken, near, limit } = input;
 
   if (!query.trim()) throw new Error("buildForwardSearchUrl: query is required");
   if (!accessToken) throw new Error("buildForwardSearchUrl: accessToken is required");
@@ -54,7 +53,6 @@ export function buildForwardSearchUrl(input: ForwardSearchInput): string {
     access_token: accessToken,
   });
   if (near) params.set("proximity", `${near.lng},${near.lat}`);
-  if (permanent) params.set("permanent", "true");
 
   return `${SEARCH_ORIGIN}/forward?${params.toString()}`;
 }
@@ -62,12 +60,11 @@ export function buildForwardSearchUrl(input: ForwardSearchInput): string {
 export interface ReverseSearchInput {
   readonly at: Coordinates;
   readonly accessToken: string;
-  readonly permanent?: boolean;
 }
 
 /** Coordinates to a street address — for a dropped pin, or a device's GPS fix. */
 export function buildReverseUrl(input: ReverseSearchInput): string {
-  const { at, accessToken, permanent } = input;
+  const { at, accessToken } = input;
 
   if (!accessToken) throw new Error("buildReverseUrl: accessToken is required");
 
@@ -76,7 +73,6 @@ export function buildReverseUrl(input: ReverseSearchInput): string {
     latitude: String(at.lat),
     access_token: accessToken,
   });
-  if (permanent) params.set("permanent", "true");
 
   return `${SEARCH_ORIGIN}/reverse?${params.toString()}`;
 }

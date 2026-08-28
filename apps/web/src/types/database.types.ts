@@ -10,7 +10,32 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
+  }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
   }
   public: {
     Tables: {
@@ -191,12 +216,14 @@ export type Database = {
           distance_meters: number | null
           driver_id: string
           driver_payout_cents: number | null
+          dropoff_address: string | null
           dropoff_geog: unknown
           dropoff_lat: number | null
           dropoff_lng: number | null
           duration_seconds: number | null
           fare_cents: number
           id: string
+          pickup_address: string | null
           pickup_geog: unknown
           pickup_lat: number | null
           pickup_lng: number | null
@@ -214,12 +241,14 @@ export type Database = {
           distance_meters?: number | null
           driver_id: string
           driver_payout_cents?: number | null
+          dropoff_address?: string | null
           dropoff_geog?: unknown
           dropoff_lat?: number | null
           dropoff_lng?: number | null
           duration_seconds?: number | null
           fare_cents: number
           id?: string
+          pickup_address?: string | null
           pickup_geog?: unknown
           pickup_lat?: number | null
           pickup_lng?: number | null
@@ -237,12 +266,14 @@ export type Database = {
           distance_meters?: number | null
           driver_id?: string
           driver_payout_cents?: number | null
+          dropoff_address?: string | null
           dropoff_geog?: unknown
           dropoff_lat?: number | null
           dropoff_lng?: number | null
           duration_seconds?: number | null
           fare_cents?: number
           id?: string
+          pickup_address?: string | null
           pickup_geog?: unknown
           pickup_lat?: number | null
           pickup_lng?: number | null
@@ -533,6 +564,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

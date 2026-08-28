@@ -65,3 +65,30 @@ export function boundsForCoordinates(points: readonly Coordinates[]): LngLatBoun
 export function boundsForGeometry(geometry: RouteGeometry): LngLatBounds {
   return boundsForCoordinates(geometry.coordinates.map(([lng, lat]) => ({ lng, lat })));
 }
+
+/** Mean Earth radius in metres (IUGG). Good to ~0.5% anywhere, far inside what this is used for. */
+const EARTH_RADIUS_METRES = 6_371_008.8;
+
+const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
+
+/**
+ * Great-circle distance between two points, in metres.
+ *
+ * Haversine, not a projected approximation: the inputs are lng/lat degrees and the callers care
+ * about a few hundred metres at most, where the difference between formulas is irrelevant but
+ * getting the units wrong is not.
+ *
+ * **This is not a fare input.** `quoteFare()` takes the routed distance from `measureRoute()` and
+ * nothing else (ADR-0010) — a straight line between two points is not the distance anybody drives.
+ * This exists for the disagreement guard in `resolveStorableCoordinates`, which is a sanity check
+ * on two coordinates that should describe the same place, not a measurement of a trip.
+ */
+export function distanceBetweenMetres(a: Coordinates, b: Coordinates): number {
+  const dLat = toRadians(b.lat - a.lat);
+  const dLng = toRadians(b.lng - a.lng);
+  const latA = toRadians(a.lat);
+  const latB = toRadians(b.lat);
+
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(latA) * Math.cos(latB) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_RADIUS_METRES * Math.asin(Math.sqrt(h));
+}

@@ -3,8 +3,9 @@
 import type { FareBreakdown } from "@rido/pricing";
 import { requireUser } from "@/lib/auth/server";
 import { quoteRide } from "@/lib/fares/server";
-import { measureRoute } from "@/lib/maps/server";
-import type { Coordinates, RouteGeometry } from "@/lib/maps/types";
+import { distanceBetweenMetres } from "@/lib/maps/map-geometry";
+import { measureRoute, resolveStorableCoordinates } from "@/lib/maps/server";
+import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types";
 
 /**
  * The one server action this page needs: measure the trip, then price it. Proves the two
@@ -52,6 +53,48 @@ export async function getRouteQuote(
       fareCents: quote.data.fareCents,
       riderTotalCents: quote.data.riderTotalCents,
       breakdown: quote.data.breakdown,
+    },
+  };
+}
+
+export interface StorableCoordinateReport {
+  /** What Search Box returned — display-only, may never be persisted. */
+  readonly displayed: Coordinates;
+  /** What Geocoding v6 returned with `permanent=true` — the one that may reach a rides row. */
+  readonly storable: Coordinates;
+  readonly driftMetres: number;
+}
+
+export type StorableCoordinateResult =
+  | { readonly ok: true; readonly data: StorableCoordinateReport }
+  | { readonly ok: false; readonly message: string };
+
+/**
+ * Resolves a storable coordinate for a place, and reports how far it landed from the displayed
+ * one. **This is the only call in the codebase that spends money on the first request** —
+ * permanent geocoding has no free tier — which is why it is behind a deliberate button rather
+ * than firing whenever a place is selected.
+ *
+ * Nothing in a booking flow calls this. It exists so the permanent product can be confirmed
+ * enabled on the account before ADR-0011's turn-on trigger is ever pulled.
+ */
+export async function getStorableCoordinate(place: Place): Promise<StorableCoordinateResult> {
+  await requireUser();
+
+  const displayed = place.coordinates;
+  if (!displayed) {
+    return { ok: false, message: "That place has no coordinate to compare against." };
+  }
+
+  const resolved = await resolveStorableCoordinates(place);
+  if (!resolved.ok) return resolved;
+
+  return {
+    ok: true,
+    data: {
+      displayed,
+      storable: resolved.data,
+      driftMetres: Math.round(distanceBetweenMetres(displayed, resolved.data)),
     },
   };
 }

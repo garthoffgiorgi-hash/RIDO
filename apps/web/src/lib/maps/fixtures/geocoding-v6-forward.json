@@ -1,0 +1,37 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "dXJuOm1ieGFkcjpmYWtlLWlkLW5vdC1yZWFs",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-117.2361, 32.8801]
+      },
+      "properties": {
+        "mapbox_id": "dXJuOm1ieGFkcjpmYWtlLWlkLW5vdC1yZWFs",
+        "feature_type": "address",
+        "name": "9500 Gilman Drive",
+        "name_preferred": "9500 Gilman Dr",
+        "place_formatted": "La Jolla, California 92093, United States",
+        "full_address": "9500 Gilman Drive, La Jolla, California 92093, United States",
+        "match_code": {
+          "address_number": "matched",
+          "street": "matched",
+          "confidence": "exact"
+        },
+        "coordinates": {
+          "longitude": -117.2361,
+          "latitude": 32.8801,
+          "accuracy": "rooftop"
+        },
+        "context": {
+          "address": { "name": "9500 Gilman Drive", "address_number": "9500" },
+          "place": { "name": "La Jolla" },
+          "region": { "name": "California", "region_code": "CA" },
+          "country": { "name": "United States", "country_code": "US" }
+        }
+      }
+    }
+  ]
+}

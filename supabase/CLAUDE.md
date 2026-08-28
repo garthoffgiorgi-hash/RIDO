@@ -80,6 +80,12 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   `supabase/functions/<name>/deno.json` instead, finds nothing, and fails deploy with "Relative
   import path @rido/pricing not prefixed with / or ./ or ../". Confirmed on `complete-ride`'s
   first real deploy (ADR-0005). Copy the `[functions.complete-ride]` block for the next function.
+- **`rides` stores addresses, not coordinates, through the pilot.** `pickup_address`/
+  `dropoff_address` hold what the rider saw; `pickup_lat/lng` stay null because Search Box results
+  may not be stored and permanent geocoding is deliberately off. The addresses are the input to a
+  later backfill, which is cheaper than paying per booking. `distance_meters` is the distance
+  actually driven and `duration_seconds` is `completed_at - started_at` — neither is ever the
+  routed estimate. (ADR-0011)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections.
 
@@ -91,6 +97,11 @@ so it is tested there and not only through the app (ADR-0007).
 At minimum, assert that: an unvetted driver cannot reach `status = 'active'`; a driver cannot
 read another driver's rides; a non-service-role write to a commission column is rejected; and
 `bump_monthly_stats` is atomic under concurrent completions for the same driver.
+
+**A column added to a table with RLS inherits that table's policies** — `007_ride_addresses.sql`
+proves that for `pickup_address`/`dropoff_address` rather than assuming it. Worth repeating for
+the next column added to `rides`: the policy doesn't need changing, but the proof that it still
+covers the row does.
 
 The last one has a real limit: `pg_prove`/`supabase test db` run one connection at a time, so
 pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connection locking.

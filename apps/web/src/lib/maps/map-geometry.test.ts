@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import { boundsForCoordinates, boundsForGeometry } from "./map-geometry.ts";
+import { boundsForCoordinates, boundsForGeometry, distanceBetweenMetres } from "./map-geometry.ts";
 import type { RouteGeometry } from "./types.ts";
 
 const GEISEL = { lng: -117.2378, lat: 32.8811 };
@@ -78,5 +78,52 @@ describe("boundsForGeometry", () => {
     // swapped the pair, lng would come back in the 32s and this would fail.
     assert.ok(ne.lng < -100 && sw.lng < -100);
     assert.ok(ne.lat > 0 && ne.lat < 90 && sw.lat > 0 && sw.lat < 90);
+  });
+});
+
+describe("distanceBetweenMetres", () => {
+  it("is zero for a point against itself", () => {
+    assert.equal(distanceBetweenMetres(GEISEL, GEISEL), 0);
+  });
+
+  it("is symmetric", () => {
+    assert.equal(distanceBetweenMetres(GEISEL, LA_JOLLA), distanceBetweenMetres(LA_JOLLA, GEISEL));
+  });
+
+  /**
+   * Geisel Library to La Jolla village, straight line. Cross-checked independently with the
+   * equirectangular approximation: dLat 0.0483 deg is ~5,377 m, dLng 0.0332 deg at cos(32.85 deg)
+   * is ~3,103 m, so the hypotenuse is ~6,208 m. A band rather than a point value because the
+   * assertion is here to catch a unit error or a lng/lat swap, not to pin a radius model.
+   */
+  it("matches an independently computed San Diego distance", () => {
+    const metres = distanceBetweenMetres(GEISEL, LA_JOLLA);
+    assert.ok(metres > 6_100 && metres < 6_300, `expected ~6.2km, got ${metres}`);
+  });
+
+  /**
+   * The failure this guards against. If lng and lat were read in the wrong order, these two points
+   * — a few hundred metres apart in reality — would come out thousands of kilometres apart,
+   * because a longitude near -117 read as a latitude is nowhere near San Diego.
+   */
+  it("reads lng and lat in the right order", () => {
+    const a = { lng: -117.2361, lat: 32.8801 };
+    const b = { lng: -117.2374, lat: 32.8811 };
+    const metres = distanceBetweenMetres(a, b);
+    assert.ok(metres < 500, `two nearby campus points should be close, got ${metres}`);
+  });
+
+  /**
+   * The disagreement guard in resolveStorableCoordinates compares a POI centroid against its
+   * street address. A building's address point sitting a couple of hundred metres from its
+   * centroid is normal; kilometres apart means the geocoder matched something else entirely.
+   */
+  it("separates a plausible centroid-vs-address gap from a wrong-place match", () => {
+    const centroid = { lng: -117.2374, lat: 32.8811 };
+    const itsAddress = { lng: -117.2361, lat: 32.8801 };
+    const somewhereElse = { lng: -117.1611, lat: 32.7157 };
+
+    assert.ok(distanceBetweenMetres(centroid, itsAddress) < 250);
+    assert.ok(distanceBetweenMetres(centroid, somewhereElse) > 250);
   });
 });

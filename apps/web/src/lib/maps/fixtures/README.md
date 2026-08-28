@@ -1,6 +1,7 @@
 # maps fixtures
 
-What `errors.test.ts`, `route.test.ts` and `places.test.ts` parse instead of calling the network.
+What `errors.test.ts`, `route.test.ts`, `places.test.ts` and `geocode.test.ts` parse instead of
+calling the network.
 Tests here must never make a real request: CI has no Mapbox token, and a green build should not
 depend on a third party's uptime or spend anyone's quota.
 
@@ -27,6 +28,7 @@ and update the table below with the date.
 | `directions-no-route.json` | Directions, **HTTP 200**, `code: "NoRoute"` | hand-built 2026-08-27 |
 | `directions-no-segment.json` | Directions, **HTTP 200**, `code: "NoSegment"` | hand-built 2026-08-27 |
 | `search-forward.json` | Search Box `/forward` FeatureCollection | hand-built 2026-08-27 |
+| `geocoding-v6-forward.json` | Geocoding v6 `/forward`, one rooftop address match | hand-built 2026-08-28 |
 
 The two `NoRoute`/`NoSegment` files are the reason this directory exists at all. Mapbox reports
 both with a `200 OK`, so a test that only exercises the happy path and a 500 would miss the exact

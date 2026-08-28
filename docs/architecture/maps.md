@@ -13,6 +13,7 @@ Costs and free tiers live in `../business/mapbox-costs.md`, not here. Code lives
 | **Directions API** (`driving-traffic`) | **Server only** | Distance and duration for one pickup/dropoff pair. The two numbers `quoteFare()` needs |
 | **Search Box** `/forward` | Browser | "Where to?" — turning "Geisel Library" into coordinates |
 | **Search Box** `/reverse` | Browser | A dropped pin or a GPS fix into a street address |
+| **Geocoding v6** `/forward` | **Server only** | The *storable* coordinate, `permanent=true`. **Off during the pilot** — ADR-0011 |
 | **Mapbox GL JS** | Browser | Drawing the map. `apps/web/src/lib/maps/map.ts` |
 
 ### Why Search Box and not the Geocoding API
@@ -84,31 +85,36 @@ than merely asserted.
 Directions **300 req/min** (a multi-coordinate request counts as one). Geocoding/Search
 **1,000 req/min**. Both adjustable per account. Neither is close to binding at pilot volume.
 
-## Open: what `rides.distance_meters` should hold
+## Resolved: what a completed ride records — ADR-0011
 
-**Unresolved, and it needs the Mapbox Product Terms read directly.** Nothing writes those columns
-yet, so nothing is broken — but the answer changes what they mean.
+**Decided 2026-08-28.** Three answers, one principle: **RIDO stores what RIDO measured.**
 
-1. **Storing geocoded coordinates may need a different product.** Mapbox's default terms are
-   "temporary": you may show a result and put it on a map, but not persist the coordinates.
-   `rides.pickup_lat/lng` persists them. Storing requires the permanent variant, which is
-   separately billed. `buildForwardSearchUrl` takes an explicit `permanent` flag rather than
-   defaulting, because getting this wrong is a terms violation rather than a bug.
+**Search Box results are display-only.** Permanent storage rights are a *Geocoding API* feature;
+the Search Box API has no `permanent` parameter and no storable tier. The flag `places.ts` used to
+carry was a no-op that read as a safety mechanism — removed, because the next person to build the
+booking flow would have set it to `true` and believed they were compliant.
 
-2. **Storing routing results may not be permitted at all** on a self-serve plan. Third-party
-   summaries of the October 2025 Product Terms quote a clause forbidding export, caching or
-   storage of Directions results without an enterprise agreement. **This has not been verified
-   against the primary source.**
+**The pilot stores addresses, not coordinates.** `rides.pickup_address`/`dropoff_address` hold the
+address line the rider saw. `geocode.ts` and `resolveStorableCoordinates()` exist and are
+**switched off** — nothing but the `/dev/maps` button calls them. Deferring is cheaper than paying
+as we go (a backfill bills only completed rides; pay-as-you-go bills every booking including
+cancellations), the geometry is worth little at 500 rides/month, and once the driver app lands a
+real GPS fix beats a geocode of what someone typed. Turn-on trigger: the booking flow is live
+*and* someone wants the spatial heatmap.
 
-If (2) holds, `rides.distance_meters` should be filled from the driver app's location trace rather
-than from a routed estimate — which is arguably the better design regardless. A routed estimate
-made *before* a trip and the *actual* distance driven are different numbers, and a completed ride's
-record ought to hold what happened, not what was predicted. The PostGIS migration's comment
-("filled at completion from the mapping provider when there is one") anticipates the estimate; that
-comment may need superseding.
+**`distance_meters` and `duration_seconds` hold the actual trip, never the routed estimate.**
+Directions results may be cached but not stored without an enterprise plan — and a completed ride
+should record what happened, not what was predicted. `duration_seconds` comes from
+`completed_at − started_at` (our own clock, works from the first ride); `distance_meters` needs a
+GPS trace and stays null until the driver app exists.
 
-`measureRoute` already sets `cache: "no-store"`, which is the terms-safe choice under either
-reading.
+**None of this touches the money.** The fare locks at quote time from our own rate card, and
+`rides.fare_cents` is never recomputed from the actual distance. The two are meant to differ.
+
+`measureRoute` sets `cache: "no-store"`, which is the terms-safe choice under every reading.
+
+Full reasoning, the evidence and its confidence, and the one grey area (storing the address string
+at all): `../decisions/0011-what-a-completed-ride-records.md`.
 
 ## Map rendering — built
 

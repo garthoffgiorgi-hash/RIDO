@@ -1,9 +1,11 @@
 import "server-only";
 
 import { mapsErrorMessage } from "./errors.ts";
+import { buildPermanentForwardUrl, parseGeocodingFeatures } from "./geocode.ts";
+import { distanceBetweenMetres } from "./map-geometry.ts";
 import { buildDirectionsUrl, measurementFromBody, redactToken } from "./route.ts";
 import { failed, type MapsResult } from "./result.ts";
-import type { Coordinates, RouteMeasurement } from "./types.ts";
+import type { Coordinates, Place, RouteMeasurement } from "./types.ts";
 
 /**
  * The trust boundary, in one file.
@@ -109,3 +111,106 @@ const redactRaw = (raw: string | undefined): string | undefined =>
   raw === undefined
     ? undefined
     : redactToken(raw).replace(/\b(pk|sk)\.[A-Za-z0-9._-]+/g, "$1.REDACTED");
+
+/**
+ * How far a permanent geocode may land from the point the rider actually tapped, in metres.
+ *
+ * A POI search returns a building's centroid; re-geocoding its street address returns a point on
+ * the road. On a campus those legitimately differ by a couple of hundred metres — Geisel's
+ * centroid against its Gilman Drive address is well inside this. What this catches is the other
+ * failure: v6 matching a *different* place with a similar address, which would send a driver
+ * somewhere the rider never chose.
+ *
+ * Deliberately generous. A false rejection costs one failed booking; a false acceptance puts a
+ * car on the wrong street.
+ */
+const MAX_GEOCODE_DRIFT_METRES = 500;
+
+/**
+ * Turns a place the rider picked into a coordinate we are allowed to keep.
+ *
+ * **The terms problem, in one function.** Search Box knows POIs but its results may not be stored
+ * at any price; Geocoding v6 grants storage rights but knows only addresses. So this takes the
+ * *address line* of a Search Box result and looks it up again through v6 with `permanent=true`.
+ * The coordinate that comes back is the one that may reach `rides.pickup_lat/lng`. (ADR-0011)
+ *
+ * **Switched off for the pilot.** Permanent geocoding has no free tier and bills from the first
+ * request, so nothing in the booking flow calls this — the pilot stores `pickup_address` and
+ * defers the geocode to a backfill that is both later and cheaper. Its only caller today is the
+ * deliberate button on `/dev/maps`. The written trigger to turn it on is in ADR-0011.
+ *
+ * **Fails closed**, the same posture `measureRoute` takes. A place with no address cannot be
+ * re-geocoded, and falling back to the display coordinate would silently persist exactly the
+ * thing this function exists to avoid — so that path does not exist.
+ */
+export async function resolveStorableCoordinates(place: Place): Promise<MapsResult<Coordinates>> {
+  const accessToken = process.env.MAPBOX_SECRET_TOKEN;
+  if (!accessToken) {
+    return failed(mapsErrorMessage({ status: 401, raw: "MAPBOX_SECRET_TOKEN is not set" }));
+  }
+
+  // No address, no storable coordinate. A dropped pin in a parking lot legitimately reaches here;
+  // the caller decides whether to refuse the booking or proceed without one.
+  if (!place.address) {
+    return failed(
+      "We couldn't confirm an address for that spot. Try picking it from the list instead.",
+    );
+  }
+
+  let url: string;
+  try {
+    url = buildPermanentForwardUrl({
+      query: place.address,
+      accessToken,
+      near: place.coordinates ?? undefined,
+    });
+  } catch (error) {
+    return failed(mapsErrorMessage({ code: "InvalidInput", raw: messageOf(error) }));
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      // A permanent geocode is a billed request whose whole point is that we may keep the answer.
+      // Caching it here would mean paying for a result we then serve from a copy Mapbox's terms
+      // say nothing about — the storage we are licensed for is the rides row, not a fetch cache.
+      cache: "no-store",
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+      headers: { accept: "application/json" },
+    });
+  } catch (error) {
+    return failed(mapsErrorMessage({ raw: redactToken(messageOf(error)) }));
+  }
+
+  if (!response.ok) {
+    return failed(mapsErrorMessage({ status: response.status }));
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  const places = parseGeocodingFeatures(body);
+  if (!places.ok) return places;
+
+  const match = places.data[0];
+  if (!match?.coordinates) {
+    return failed("We couldn't confirm that address. Try picking the place again.");
+  }
+
+  // The disagreement guard. Only meaningful when we have a display coordinate to compare against;
+  // a Place without one has nothing to contradict.
+  if (place.coordinates) {
+    const drift = distanceBetweenMetres(place.coordinates, match.coordinates);
+    if (drift > MAX_GEOCODE_DRIFT_METRES) {
+      return failed(
+        "That address resolved somewhere unexpected. Try picking the place again, or drop a pin.",
+      );
+    }
+  }
+
+  return { ok: true, data: match.coordinates };
+}

@@ -41,7 +41,8 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/` and `maps/` today, `rides/` and `stripe/` to come |
-| `src/lib/maps/` | Mapbox. `server.ts` measures a trip (`server-only`); `browser.ts` searches places; `route.ts`/`places.ts`/`errors.ts` are pure and tested. See **Maps** below |
+| `src/lib/maps/` | Mapbox. `server.ts` measures a trip (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
+| `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
@@ -112,11 +113,15 @@ never an input to a price; a client-supplied *coordinate pair* is fine. Place se
   check; `parseDirectionsBody` is.
 - **Mapbox returns floats; `quoteFare` throws on them.** The rounding happens once, in
   `parseDirectionsBody`, and is tested. Never round at a call site.
-- `map.ts` will be **the only file importing `mapbox-gl`** — enforced by `check-context.mjs` rule
-  7. Not built yet; it needs a real token to verify. Markers are Midnight DOM elements, never a
-  recoloured default pin. A GL layer's `line-color` needs a literal colour, so it reads
+- `map.ts` is **the only file importing `mapbox-gl`** — enforced by `check-context.mjs` rule 7. It
+  exports `createRideMap()`, returning an opaque `RideMapHandle` rather than a Mapbox `Map`
+  instance, so a caller can't depend on a vendor API detail. Markers are Midnight DOM elements,
+  never a recoloured default pin. A GL layer's `line-color` needs a literal colour, so it reads
   `--color-midnight` off `:root` at runtime — the one documented exception to "never a hex in a
-  component", and it belongs in `map.ts` alone.
+  component", and it belongs in `map.ts` alone. `RideMap.tsx` (`src/components/domain/`) is the
+  one Client Component allowed to reach it. `/dev/maps` (auth-gated, 404s outside development)
+  proves the whole path — search, `measureRoute()`, `quoteFare()`, render — against a real Mapbox
+  account. See `docs/architecture/maps.md`.
 - What `rides.distance_meters` should hold is **open** — routed estimate vs. measured actual. See
   `docs/architecture/maps.md`. Nothing writes it yet.
 

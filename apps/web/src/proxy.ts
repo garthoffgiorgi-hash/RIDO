@@ -23,7 +23,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * sitting behind `loading.tsx` streams as a 200 plus a client-side navigation; catching it here
  * keeps protected routes a clean HTTP redirect.
  */
-const PROTECTED_PREFIXES = ["/account", "/drive"] as const;
+const PROTECTED_PREFIXES = ["/account", "/drive", "/dev"] as const;
 
 function isProtected(pathname: string): boolean {
   return PROTECTED_PREFIXES.some(

@@ -4,14 +4,15 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-27** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-08-28** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
 The **money spine is complete end to end.** Scaffolding, context system, marketing surface, auth,
 database schema, commission math, and the `complete-ride` Edge Function that joins them are all
 built and tested — a ride can be rated and snapshotted correctly, including under concurrent
-completions. What's missing is the **product around it**: no payments, no maps, no rider or driver
+completions. Maps — measuring, searching, and now rendering — are also built and proven end to
+end at `/dev/maps`. What's missing is the **product around it**: no payments, no rider or driver
 screens, and nothing that creates a ride in the first place.
 
 ## What exists (verified, not assumed)
@@ -26,7 +27,7 @@ screens, and nothing that creates a ride in the first place.
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
 | `/account`, `/drive` | **Role-aware.** `/account` shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row; `/drive` is a driver-facing placeholder, auth-gated the same way. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
 | `/request` | Still a placeholder. Nothing links to it — rider flow not started. |
-| Maps | **The measuring half is built.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates. Pure request-building and response-parsing are tested against committed fixtures (41 tests). **Map rendering is not built** and no Mapbox account exists. ADR-0010, `architecture/maps.md`. |
+| Maps | **Built end to end.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates; `map.ts` renders a map (`mapbox-gl`, the only file importing it, dynamically loaded) via an opaque `RideMapHandle` — no vendor type crosses into `RideMap.tsx`. `/dev/maps` (auth-gated, 404s outside development) proves search → measure → quote → render against a real Mapbox account. Pure request-building, response-parsing, and map-fitting geometry are tested (61 tests). ADR-0010, `architecture/maps.md`. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
 | `tools/pilot-model` | **Runnable** (`npm run model`) — Vite + React + recharts workspace. Integer cents throughout, calls `@rido/pricing`; 24 tests on `../tools/pilot-model/src/model.ts`. Full monthly P&L now — driver *and* rider acquisition cost, Mapbox and card-processing as sliders (not constants), an adjustable horizon, one-click CSV export |
@@ -41,10 +42,9 @@ screens, and nothing that creates a ride in the first place.
 
 ## What does not exist
 
-Stripe (subscriptions or Connect) · map *rendering* (`mapbox-gl` isn't installed; there is no
-Mapbox account, and a map you can't render is a map you can't verify) · rider booking flow
-(which is also why `rides` has no `authenticated` write policy yet — nothing to write it against,
-and nothing that creates a ride for `complete-ride` to finish) · driver app.
+Stripe (subscriptions or Connect) · rider booking flow (which is also why `rides` has no
+`authenticated` write policy yet — nothing to write it against, and nothing that creates a ride
+for `complete-ride` to finish) · driver app.
 
 `complete-ride` is **deployed** to the live project (`supabase functions deploy complete-ride
 --project-ref <ref> --use-api`) but not yet exercised end to end — nothing creates a `rides` row,
@@ -123,10 +123,13 @@ rather than at a month index. Its arithmetic moved to `../tools/pilot-model/src/
 display bug on the way: "Driver take-home" was showing RIDO's revenue per driver.
 
 **Phase 3 — surfaces.** ✅ Marketing pages. ✅ The fare a rider is quoted is computable
-(`quoteFare` + the seeded card) **and now measurable** (`measureRoute` + Mapbox Directions) — what's
-missing is a surface to show it on. 🔶 **Mapbox** — the vendor boundary is built and tested; map
-rendering is not, and needs an account. ⬜ Rider request flow (map-first, bottom sheet, fare up
-front). ⬜ Driver view (online/offline, incoming card with "you keep $X (Y%)", MTD tier progress).
+(`quoteFare` + the seeded card), measurable (`measureRoute` + Mapbox Directions), **and now
+renderable and provable end to end** at `/dev/maps` (dev-only, auth-gated) — what's missing is a
+real rider-facing surface to put it on. ✅ **Mapbox** — the vendor boundary, the rendering
+(`map.ts`, `RideMap.tsx`), and a proving page are all built and tested against a real account.
+⬜ Rider request flow (map-first, bottom sheet, fare up front) — `/dev/maps` is the proof this can
+work, not the surface itself. ⬜ Driver view (online/offline, incoming card with "you keep $X
+(Y%)", MTD tier progress).
 
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
 inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —

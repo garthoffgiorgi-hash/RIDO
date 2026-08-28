@@ -13,7 +13,7 @@ Costs and free tiers live in `../business/mapbox-costs.md`, not here. Code lives
 | **Directions API** (`driving-traffic`) | **Server only** | Distance and duration for one pickup/dropoff pair. The two numbers `quoteFare()` needs |
 | **Search Box** `/forward` | Browser | "Where to?" — turning "Geisel Library" into coordinates |
 | **Search Box** `/reverse` | Browser | A dropped pin or a GPS fix into a street address |
-| **Mapbox GL JS** | Browser | Drawing the map. Not yet built — see "Not built yet" |
+| **Mapbox GL JS** | Browser | Drawing the map. `apps/web/src/lib/maps/map.ts` |
 
 ### Why Search Box and not the Geocoding API
 
@@ -110,13 +110,38 @@ comment may need superseding.
 `measureRoute` already sets `cache: "no-store"`, which is the terms-safe choice under either
 reading.
 
-## Not built yet
+## Map rendering — built
 
-Map rendering. `mapbox-gl` is not installed, there is no `map.ts`, and no component draws a map —
-that needs a token to verify meaningfully, and verifying a map you cannot render is not verifying
-it. When it lands: **`map.ts` will be the only file in the repo importing `mapbox-gl`**, enforced
-by `scripts/check-context.mjs` rule 7, and markers are Midnight DOM elements rather than Mapbox's
-default pin (`brand/design-system.md`).
+`apps/web/src/lib/maps/map.ts` is the only file in the repo importing `mapbox-gl`, enforced by
+`scripts/check-context.mjs` rule 7. It exports `createRideMap()`, which returns an opaque
+`RideMapHandle` (`setPickup`, `setDropoff`, `drawRoute`, `fitToRoute`, `destroy`) rather than a
+Mapbox `Map` instance — the same "no vendor shape crosses the boundary" rule `types.ts` states for
+`Place` and `RouteMeasurement`, held on the rendering side too. `mapbox-gl` is dynamically
+imported so it can never land in a server bundle.
 
-Also unbuilt: the `quote-ride` Edge Function (nothing asks for a quote yet — it needs the booking
-flow, not this module), and anything that writes a `rides` row.
+Markers are Midnight DOM elements, not Mapbox's default pin (`brand/design-system.md`). The route
+line is a GL layer, whose `line-color` paint property needs a literal colour rather than a CSS
+variable — the one documented exception to "never a hex in a component" in
+`apps/web/CLAUDE.md`, scoped to this file alone; it reads `--color-midnight` off `:root` at
+runtime rather than hardcoding it a second time.
+
+`apps/web/src/lib/maps/map-geometry.ts` holds the one genuinely pure piece — computing a bounding box from
+two coordinates or a route's geometry, with a fallback widening so `fitBounds` never zooms in on a
+zero-area box. It's tested directly; `map.ts` itself is vendor glue that needs a DOM, verified by
+looking at the screen rather than by a unit test, per ADR-0007's carve-out for that kind of code.
+
+`apps/web/src/components/domain/RideMap.tsx` is the Client Component boundary — it owns the container ref
+and the mount/unmount lifecycle, and receives only app types (`Coordinates`, `RouteGeometry`).
+
+`apps/web/src/app/dev/maps/` is the proving ground: two debounced place searches
+(`searchPlaces()`), a server action (`actions.ts`) that calls `measureRoute()` then
+`apps/web/src/lib/fares/server.ts`'s `quoteRide()`, and a rendered map with the result. 404s outside
+development (`NODE_ENV === "production"` short-circuits before the page does anything else, so it
+prerenders as a static 404 rather than staying dynamic) and is gated by `requireUser()` behind
+that, matching `/account` and `/drive` — the fare quote underneath it reads `fare_rate_cards`,
+which RLS restricts to `authenticated`. Not linked from anywhere.
+
+## Still unbuilt
+
+The `quote-ride` Edge Function (nothing asks for a quote outside `/dev/maps` yet — it needs the
+booking flow, not this module) and anything that writes a `rides` row.

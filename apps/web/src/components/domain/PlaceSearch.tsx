@@ -10,6 +10,14 @@ interface PlaceSearchProps {
   readonly selected: Place | null;
   readonly onSelect: (place: Place) => void;
   readonly near?: Coordinates;
+  /**
+   * Seeds the search box with remembered address text — e.g. a canceled ride's `pickup_address`,
+   * which ADR-0011 stores as a string with no coordinates to restore alongside it. This is the
+   * honest ceiling for "remember what I searched last": one tap re-selects instead of a blank
+   * field, but it's a fresh search, not a restored `Place`. Only read once, at mount — it seeds
+   * the field's starting value, not a value this component keeps in sync with afterward.
+   */
+  readonly initialQuery?: string;
 }
 
 /**
@@ -18,8 +26,8 @@ interface PlaceSearchProps {
  * and offers "Change" rather than re-searching immediately, so a click doesn't get lost to a
  * stale results list re-appearing.
  */
-export function PlaceSearch({ label, selected, onSelect, near }: PlaceSearchProps) {
-  const [query, setQuery] = useState("");
+export function PlaceSearch({ label, selected, onSelect, near, initialQuery }: PlaceSearchProps) {
+  const [query, setQuery] = useState(initialQuery ?? "");
   const [results, setResults] = useState<Place[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);

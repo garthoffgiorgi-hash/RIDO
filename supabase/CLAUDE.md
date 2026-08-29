@@ -41,11 +41,20 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   **read-only even to their own driver** — both are written exclusively by the service role
   (Stripe webhooks; the rollup trigger) since a driver-writable fee state or MTD figure is a
   direct revenue/commission-integrity hole, not a permissions nuance.
-- Riders read only their own `rides`; drivers read only rides where they're the driver. Neither
-  has ever had an `INSERT`/`UPDATE` grant on `rides`, and the rider booking flow that now
-  exists (ADR-0012) still doesn't need one — `requestRide()`/`cancelRide()` write through the
-  service role, gated by `requireUser()` inside the function rather than by a policy. Driver
-  accept, when it's built, decides its own write path the same way rather than inheriting one.
+- Riders read only their own `rides`; drivers read only rides where they're the driver, **plus**
+  (new, ADR-0013) any active driver reads every unassigned `'requested'` ride — the open pool a
+  dispatch board needs. That policy is PERMISSIVE, ORing with the two ownership policies rather
+  than narrowing either. Neither `INSERT` nor `UPDATE` has ever been granted on `rides` to
+  `authenticated` — the rider booking flow (ADR-0012) and driver accept (ADR-0013) both write
+  through the service role instead, gated by `requireUser()` inside the function rather than by a
+  policy.
+- **A nullable column compared with `IN (subquery)` in an RLS policy silently hides rows where
+  it's null** — SQL's three-valued logic makes the comparison neither `TRUE` nor `FALSE`, and RLS
+  refuses anything short of `TRUE`. This bit `rides_select_own_as_driver` the moment `driver_id`
+  became nullable (ADR-0012): every open request was invisible to every driver until ADR-0013
+  added a policy that checks `driver_id IS NULL` explicitly instead. No fixture caught it because
+  every prior `rides` row in the test suite bound a driver at insert. Worth checking for on the
+  next nullable column added to a table with an `IN (subquery)` policy already on it.
 - Commission columns on `rides` are writable **only by the service role**. Not by the driver, not
   by the rider, not by an authenticated user with a clever payload.
 - Write a pgTAP test for every policy. A policy with no test is an assumption.
@@ -91,7 +100,15 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   `rides_driver_present_unless_pending` — every other status still requires one, in the
   database, not by convention. `rides_one_active_per_rider` (a partial unique index) is what
   actually stops a rider from having two live requests; an app-level check would race under a
-  concurrent second request. (ADR-0012)
+  concurrent second request. (ADR-0012) Its driver-side mirror, `rides_one_active_per_driver`
+  (total, not partial — `driver_id` is never null in the two statuses it covers), stops a driver
+  from holding two accepted rides at once. (ADR-0013)
+- **Driver accept is one conditional `UPDATE`, not a lock.** `WHERE status = 'requested' AND
+  driver_id IS NULL` in the same statement that sets `driver_id`/`status`/`accepted_at` is the
+  entire concurrency mechanism — accept touches exactly one row, so Postgres's own row-level
+  locking serializes two drivers racing it without any of `apply_ride_commission`'s compare-and-
+  swap machinery. That machinery exists because completion touches *two* rows (the ride and the
+  month rollup); reaching for it here would solve a problem accept doesn't have. (ADR-0013)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections.
 
@@ -111,6 +128,10 @@ covers the row does.
 
 The last one has a real limit: `pg_prove`/`supabase test db` run one connection at a time, so
 pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connection locking.
-`concurrent-completion.sh` (plain `psql`, no added dependency) is the separate, standalone proof
-that `reserve_driver_month()` actually blocks a second completion rather than letting it read a
-stale month-to-date figure — run it manually against a real instance; it isn't part of `test db`.
+`concurrent-completion.sh` and `concurrent-apply-ride-commission.sh` (plain `psql`, no added
+dependency) are the separate, standalone proofs that `reserve_driver_month()`/
+`apply_ride_commission()` actually serialize two completions rather than letting one read a stale
+month-to-date figure. `concurrent-accept-ride.sh` proves the same class of thing for accept — two
+connections racing one ride, asserting exactly one wins and the loser genuinely blocked rather than
+losing by luck — even though accept needs no lock of its own to get there (ADR-0013). Run these
+manually against a real instance; none of them are part of `test db`.

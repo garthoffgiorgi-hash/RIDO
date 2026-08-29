@@ -27,6 +27,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Which Mapbox products, the two-token model | `architecture/maps.md` |
 | What a completed ride records — addresses vs coordinates, actual vs routed | `decisions/0011-what-a-completed-ride-records.md` |
 | Who may write a `rides` row, and what happens when a quoted price moves | `decisions/0012-rider-books-server-owns-the-write.md` |
+| Who may accept a ride, the open-pool RLS policy, why no lock/CAS is needed | `decisions/0013-driver-accepts-one-row-one-update.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |

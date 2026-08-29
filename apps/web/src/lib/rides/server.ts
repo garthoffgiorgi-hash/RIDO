@@ -1,38 +1,26 @@
 import "server-only";
 
-import type { FareBreakdown } from "@rido/pricing";
+import { cents, commissionForRide, type FareBreakdown } from "@rido/pricing";
 import type { User } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth/server";
+import { getActiveCommissionTiers, getDriverMonthToDateCents } from "@/lib/commission/server.ts";
+import { getOwnDriverProfile } from "@/lib/drivers/server.ts";
+import type { DriverProfile } from "@/lib/drivers/status.ts";
 import { quoteRide } from "@/lib/fares/server";
 import { measureRoute } from "@/lib/maps/server.ts";
 import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
+import { canAcceptRide, type OpenRide } from "./accept.ts";
 import { failed, type RidesResult } from "./result.ts";
 import { ACTIVE_STATUSES, canRiderCancel, type RideStatus } from "./status.ts";
 
 /**
- * The rider half of booking: quote a trip before commitment, book it, read the one ride that's
- * live, cancel it. `complete-ride`'s SDK boundary is the model — a service-role write reached
- * through exactly the functions here, never a client insert. See ADR-0012.
+ * The booking half (rider) and the accept half (driver): quote a trip, book it, read the one
+ * ride that's live, cancel it, list what's open, accept one. `complete-ride`'s SDK boundary is
+ * the model — a service-role write reached through exactly the functions here, never a client
+ * insert. See ADR-0012, ADR-0013.
  */
-
-/**
- * `database.types.ts` is stale relative to `20260829120000_enable_ride_requests.sql` — it
- * predates `driver_id` becoming nullable and `canceled_at` existing, the same gap
- * `pickup_address`/`dropoff_address` had under ADR-0011 until the migration was pushed and
- * regenerated for real. This container has no Docker, so `supabase gen types` can't run here to
- * close it directly. These two overrides patch exactly the fields the migration changed — every
- * other field still comes from the generated type, so a real drift anywhere else still fails to
- * compile. Delete both once the migration is live and regenerated; they should end up identical
- * to what the generator produces.
- */
-type RidesInsert = Omit<Database["public"]["Tables"]["rides"]["Insert"], "driver_id"> & {
-  driver_id: string | null;
-};
-type RidesUpdate = Database["public"]["Tables"]["rides"]["Update"] & {
-  canceled_at?: string | null;
-};
 
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
@@ -118,7 +106,7 @@ export async function requestRide(
     return { kind: "price_changed", quote: quote.data };
   }
 
-  const payload: RidesInsert = {
+  const payload: Database["public"]["Tables"]["rides"]["Insert"] = {
     rider_id: user.id,
     driver_id: null,
     fare_cents: quote.data.fareCents,
@@ -127,13 +115,7 @@ export async function requestRide(
   };
 
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("rides")
-    // The cast bridges RidesInsert to the client's stale generated Insert type — see the comment
-    // on RidesInsert above. `payload` itself is fully checked; nothing here is unchecked.
-    .insert(payload as unknown as Database["public"]["Tables"]["rides"]["Insert"])
-    .select("id")
-    .single();
+  const { data, error } = await service.from("rides").insert(payload).select("id").single();
 
   if (error) {
     // 23505 is rides_one_active_per_rider — the expected, named conflict. Anything else is not.
@@ -209,20 +191,149 @@ export async function cancelRide(rideId: string): Promise<RidesResult<null>> {
     return failed("That ride can no longer be canceled.");
   }
 
-  const patch: RidesUpdate = {
+  const patch: Database["public"]["Tables"]["rides"]["Update"] = {
     status: "canceled",
     canceled_at: new Date().toISOString(),
   };
 
   const service = createServiceRoleClient();
-  const { error: updateError } = await service
-    .from("rides")
-    // Same bridge as requestRide()'s insert — see the comment on RidesUpdate above.
-    .update(patch as unknown as Database["public"]["Tables"]["rides"]["Update"])
-    .eq("id", rideId);
+  const { error: updateError } = await service.from("rides").update(patch).eq("id", rideId);
 
   if (updateError) {
     return failed("We couldn't cancel that ride. Try again in a moment.");
   }
+  return { ok: true, data: null };
+}
+
+export interface OpenRideRequest {
+  readonly id: string;
+  readonly pickupAddress: string | null;
+  readonly dropoffAddress: string | null;
+  readonly fareCents: number;
+  readonly driverPayoutCents: number;
+  readonly commissionRateBps: number;
+  readonly requestedAt: string;
+}
+
+/**
+ * The open pool an active driver can accept from, each priced with what THIS driver would keep —
+ * the "you keep $X (Y%)" figure `apps/web/CLAUDE.md` calls the product's core promise made
+ * visible. A requested ride has no commission snapshot yet (that's written at completion,
+ * ADR-0008), so this computes it live: the same `commissionForRide` `complete-ride` uses, fed the
+ * same two database-sourced inputs (active tiers, this driver's MTD gross) rather than any
+ * arithmetic here.
+ *
+ * All candidates are priced against the SAME month-to-date figure, read once — they're
+ * alternatives the driver is choosing between, not a sequence where accepting one would change
+ * what the next is worth.
+ *
+ * Reads through the RLS-scoped client: `rides_select_open_requests_as_active_driver` is what
+ * makes this return anything for an active driver, and nothing for a pending or suspended one.
+ */
+export async function listOpenRequests(
+  driver: DriverProfile,
+): Promise<RidesResult<OpenRideRequest[]>> {
+  const supabase = await createServerClient();
+  const { data: openRides, error } = await supabase
+    .from("rides")
+    .select("id, fare_cents, pickup_address, dropoff_address, requested_at")
+    .eq("status", "requested")
+    .is("driver_id", null)
+    .order("requested_at", { ascending: true });
+
+  if (error) {
+    return failed("We couldn't load open ride requests right now. Try again in a moment.");
+  }
+  if (!openRides || openRides.length === 0) {
+    return { ok: true, data: [] };
+  }
+
+  const tiers = await getActiveCommissionTiers();
+  if (!tiers.ok) return tiers;
+
+  const mtdGrossCents = await getDriverMonthToDateCents(driver.id);
+  if (!mtdGrossCents.ok) return mtdGrossCents;
+
+  return {
+    ok: true,
+    data: openRides.map((ride) => {
+      const { driverPayoutCents, commissionRateBps } = commissionForRide({
+        fareCents: cents(ride.fare_cents),
+        mtdGrossCents: cents(mtdGrossCents.data),
+        tiers: tiers.data,
+      });
+
+      return {
+        id: ride.id,
+        pickupAddress: ride.pickup_address,
+        dropoffAddress: ride.dropoff_address,
+        fareCents: ride.fare_cents,
+        driverPayoutCents,
+        commissionRateBps,
+        requestedAt: ride.requested_at,
+      };
+    }),
+  };
+}
+
+/**
+ * Accepts a requested ride for the signed-in driver, or explains why it didn't take.
+ *
+ * `canAcceptRide()` runs first as a pre-flight check against the ride's current state, read
+ * through the service role rather than RLS — an already-taken ride is invisible to this driver
+ * under `rides_select_open_requests_as_active_driver`, so an RLS read can't tell "taken" apart
+ * from "does not exist" the way a useful refusal message needs to. But that read-then-decide is
+ * advisory, not the mechanism: two drivers can both pass it in the same instant. What actually
+ * decides the race is the conditional UPDATE below, whose `WHERE` clause repeats
+ * `status = 'requested' AND driver_id IS NULL` as a database-enforced predicate — atomic, no
+ * lock, no retry loop needed the way `complete-ride`'s two-row write does (ADR-0013). Zero rows
+ * updated means the pre-flight read was already stale: someone else won in between.
+ */
+export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
+  const user = await requireUser();
+  const driver = await getOwnDriverProfile(user);
+
+  if (!driver) {
+    return failed("You don't have a driver profile yet.");
+  }
+
+  const service = createServiceRoleClient();
+
+  const { data: ride, error: readError } = await service
+    .from("rides")
+    .select("status, driver_id")
+    .eq("id", rideId)
+    .maybeSingle();
+
+  if (readError || !ride) {
+    return failed("We couldn't find that ride.");
+  }
+
+  const openRide: OpenRide = { status: ride.status, driverId: ride.driver_id };
+  const decision = canAcceptRide(openRide, driver.status);
+  if (!decision.allowed) {
+    return failed(decision.message);
+  }
+
+  const { data: accepted, error: updateError } = await service
+    .from("rides")
+    .update({ driver_id: driver.id, status: "accepted", accepted_at: new Date().toISOString() })
+    .eq("id", rideId)
+    .eq("status", "requested")
+    .is("driver_id", null)
+    .select("id");
+
+  if (updateError) {
+    // 23505 is rides_one_active_per_driver — this driver already holds a live ride.
+    if (updateError.code === "23505") {
+      return failed("You already have a ride in progress.");
+    }
+    return failed("We couldn't accept that ride. Try again in a moment.");
+  }
+
+  if (!accepted || accepted.length === 0) {
+    return failed("Another driver already accepted this ride.");
+  }
+
   return { ok: true, data: null };
 }

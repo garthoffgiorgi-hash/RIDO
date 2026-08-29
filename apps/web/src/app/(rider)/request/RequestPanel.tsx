@@ -29,6 +29,12 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(initialActiveRide);
   const [pickup, setPickup] = useState<Place | null>(null);
   const [dropoff, setDropoff] = useState<Place | null>(null);
+  // Captured once, at mount, from whatever ride was active then — not kept in sync afterward.
+  // This is what survives a reload that lands on a still-active ride and is then canceled:
+  // handleCancel() nulls out `activeRide`, but these two don't come from it, so cancel can't
+  // clear them. See PlaceSearch's `initialQuery`.
+  const [lastPickupAddress] = useState(initialActiveRide?.pickupAddress ?? undefined);
+  const [lastDropoffAddress] = useState(initialActiveRide?.dropoffAddress ?? undefined);
   const [quote, setQuote] = useState<RideQuote | null>(null);
   const [priceChanged, setPriceChanged] = useState(false);
   const [quoting, setQuoting] = useState(false);
@@ -118,7 +124,11 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
         <div className="space-y-4 p-5 pb-8">
           {activeRide ? (
             <>
-              <p className="font-sora text-heading font-semibold text-ink">Looking for a driver</p>
+              <p className="font-sora text-heading font-semibold text-ink">
+                {activeRide.status === "accepted"
+                  ? "Your driver is on the way"
+                  : "Looking for a driver"}
+              </p>
               <div className="space-y-1 text-[14px] text-slate">
                 <p>{activeRide.pickupAddress ?? "Pickup"}</p>
                 <p>{activeRide.dropoffAddress ?? "Dropoff"}</p>
@@ -143,12 +153,14 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
                   selected={pickup}
                   onSelect={setPickup}
                   near={dropoffCoords ?? undefined}
+                  initialQuery={lastPickupAddress}
                 />
                 <PlaceSearch
                   label="Dropoff"
                   selected={dropoff}
                   onSelect={setDropoff}
                   near={pickupCoords ?? undefined}
+                  initialQuery={lastDropoffAddress}
                 />
               </div>
 

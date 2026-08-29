@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.17"
+    PostgrestVersion: "14.5"
   }
   graphql_public: {
     Tables: {
@@ -209,12 +209,13 @@ export type Database = {
       rides: {
         Row: {
           accepted_at: string | null
+          canceled_at: string | null
           commission_cents: number | null
           commission_rate_bps: number | null
           completed_at: string | null
           created_at: string
           distance_meters: number | null
-          driver_id: string
+          driver_id: string | null
           driver_payout_cents: number | null
           dropoff_address: string | null
           dropoff_geog: unknown
@@ -234,12 +235,13 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          canceled_at?: string | null
           commission_cents?: number | null
           commission_rate_bps?: number | null
           completed_at?: string | null
           created_at?: string
           distance_meters?: number | null
-          driver_id: string
+          driver_id?: string | null
           driver_payout_cents?: number | null
           dropoff_address?: string | null
           dropoff_geog?: unknown
@@ -259,12 +261,13 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          canceled_at?: string | null
           commission_cents?: number | null
           commission_rate_bps?: number | null
           completed_at?: string | null
           created_at?: string
           distance_meters?: number | null
-          driver_id?: string
+          driver_id?: string | null
           driver_payout_cents?: number | null
           dropoff_address?: string | null
           dropoff_geog?: unknown

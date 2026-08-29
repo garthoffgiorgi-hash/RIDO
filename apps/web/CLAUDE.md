@@ -39,11 +39,12 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 |---|---|
 | `src/app/(marketing)/` · `(rider)/` · `(driver)/` | Route groups, one flow each. No shared layout between rider and driver beyond the root |
 | `src/components/ui/` | Brand primitives: `Button`, `Card`, `Input`, `Badge`, `SegmentedControl` |
-| `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, later `RideCard`, `TierProgress` |
-| `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/`, `maps/`, `fares/`, `rides/` today, `stripe/` to come |
+| `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, `RideCard`, later `TierProgress` |
+| `src/lib/<domain>/` | **The vendor boundary.** One module per domain — `auth/`, `maps/`, `fares/`, `rides/`, `drivers/`, `commission/` today, `stripe/` to come |
 | `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
-| `src/lib/rides/` | Booking: `status.ts` (pure `RideStatus`, `canRiderCancel`), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, service-role writes). Reached from `(rider)/request/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
+| `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthToDateCents(driverId)` — and hands both to `commissionForRide()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. What powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet |
+| `src/lib/rides/` | Booking and accept: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, `listOpenRequests`, `acceptRide` — all service-role writes). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
@@ -91,20 +92,29 @@ once (there is no self-serve "become a driver" flow yet — the only route in to
 admin/vetting process under the service role), so a page that needs to know shows or hides
 content per identity; it never forces a single choice between them.
 
-`/account` is the one post-login landing page for everyone — `/request` has real
-functionality now, but redirecting straight into a live map on every sign-in isn't obviously
-right, and `/drive` still has nothing to redirect into, so the split stays deferred. It's
-role-aware in its *content* (a rider card always, a driver card if `getOwnDriverProfile()`
-returns non-null), not in *where the login redirect sends you*. `/drive` and `/request` are both
-auth-gated the same way: `requireUser()` in the page is the boundary, `proxy.ts`'s
-`PROTECTED_PREFIXES` is the clean-redirect convenience.
+`/account` is the one post-login landing page for everyone — `/request` and `/drive` both have
+real functionality now, but redirecting straight into a live map or a dispatch board on every
+sign-in isn't obviously right either, so the split stays deferred. It's role-aware in its
+*content* (a rider card always, a driver card if `getOwnDriverProfile()` returns non-null), not in
+*where the login redirect sends you*. `/drive` and `/request` are both auth-gated the same way:
+`requireUser()` in the page is the boundary, `proxy.ts`'s `PROTECTED_PREFIXES` is the
+clean-redirect convenience.
 
 **A rider books through `src/lib/rides/`, never through an RLS write policy.** `rides` grants
 `authenticated` no `INSERT`/`UPDATE` at all — `requestRide()` re-measures and re-prices
 server-side at confirm and writes through `createServiceRoleClient()`, the same shape
 `complete-ride` uses on the driver side. `shownFareCents` is compared, never stored: if the
 fresh quote disagrees, nothing is written and the rider re-confirms at the new price. `/request`
-is unlinked from anywhere — nothing accepts a requested ride yet. ADR-0012,
+is unlinked from anywhere. ADR-0012, `docs/architecture/ride-booking.md`.
+
+**A driver accepts through the same module, same posture.** `listOpenRequests(driver)` reads the
+open pool through RLS — a new PERMISSIVE policy is what lets an active driver see an unassigned
+`'requested'` ride at all; a *nullable* `driver_id` compared with `IN (subquery)` evaluates to SQL
+`NULL`, not `FALSE`, so the pre-existing driver policy silently hid the entire pool until this
+policy was added. `acceptRide(rideId)` pre-flight-checks with `canAcceptRide()`
+(`src/lib/rides/accept.ts`, pure) then writes through the service role with a single conditional
+`UPDATE … WHERE status = 'requested' AND driver_id IS NULL` — no lock, no compare-and-swap:
+accept touches one row, so Postgres's own row-level locking is the whole mechanism. ADR-0013,
 `docs/architecture/ride-booking.md`.
 
 ## Maps

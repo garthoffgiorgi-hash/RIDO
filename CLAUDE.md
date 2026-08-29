@@ -9,22 +9,26 @@ logic is the most important code in this repo. Get it exactly right.**
 **Built and working:** the Next.js app on the real brand, four marketing routes, **auth** (a live
 Supabase project, sign-up and sign-in by email or phone, session refresh, route guards), the
 **database** (schema applied, RLS and constraints tested against a real Postgres), **all money
-math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — and the
-**`complete-ride` Edge Function** that joins them.
+math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — the
+**`complete-ride` Edge Function** that joins them, **Mapbox** (measuring, searching, and rendering
+a route, proven end to end at `/dev/maps` against a real account), and the **rider/driver booking
+lifecycle**: a rider requests a real ride at `/request` (quote, book, cancel) and a driver accepts
+one at `/drive` (the open pool, priced live with what they'd keep) — `requested → accepted` is a
+real, race-proof write, so `complete-ride` finally has a real row it can finish.
 
-**Not built:** payments (Stripe), map *rendering*, the rider booking flow, the driver app. A fare
-is now computable end to end — `measureRoute()` supplies the distance and duration `quoteFare()`
-needs — but nothing asks for one yet.
+**Not built:** payments (Stripe), the native driver app, dispatch/proximity matching, and anything
+realtime (a rider learns of an accept, and a driver of a lost race, only on reload).
 
 **Partially built:**
 
 - **The rider/driver distinction.** `/account` shows a rider card to everyone and a driver card to
   anyone with a `drivers` row (no `role` column — the row's existence *is* the identity, and a
-  person can hold both). Post-login redirect still always lands on `/account`, because neither
-  `/request` nor the `/drive` placeholder has real functionality to split into yet.
-- **Mapbox.** `apps/web/src/lib/maps/` measures a trip and searches places, tested against
-  committed fixtures. **Nothing renders a map yet** — that needs a real token to verify, and there
-  is no Mapbox account. See `docs/architecture/maps.md`.
+  person can hold both). Post-login redirect still always lands on `/account` — both `/request`
+  and `/drive` have real functionality now, but landing a rider straight into a live map, or a
+  driver straight into a dispatch board, on every sign-in isn't obviously right either.
+- **Driver accept.** Built: the open pool, the live "you keep $X (Y%)" figure, the race-proof
+  accept write (ADR-0013). Not built: online/offline availability, MTD tier-progress, decline, the
+  `accepted → in_progress` transition.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.

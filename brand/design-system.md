@@ -112,16 +112,26 @@ Hero with the monument `RIDO` + a tangible-first headline (cheaper + fair, not "
 **Rider request flow:**
 Map-first (Midnight markers), bottom sheet for "where to?", fare + ETA shown in tabular numerals up front (honest pricing is the brand), `rido` lowercase in the top bar, primary "Get a rido" CTA. States: searching → matched (driver card) → en route → arrived → in trip → rate.
 
-**Built so far (`/request`, `docs/decisions/0012-rider-books-server-owns-the-write.md`):** the
-first two states as *naming* (two place fields) and *quoted* (`Fare` + `FareChip` ETA, `"Get a
-rido"`), plus a *price-changed* state this blueprint didn't anticipate — the fare is re-quoted
-server-side at confirm, and if it moved, the rider re-confirms rather than being silently charged
-a different number — and *requested* ("looking for a driver," cancelable). `matched` onward needs
-a driver to accept, which doesn't exist yet. `"Get a rido"` keeps its name through every state per
-section 5 — a changed price never becomes a relabeled button.
+**Built so far (`/request`, `docs/decisions/0012-rider-books-server-owns-the-write.md`,
+`docs/decisions/0013-driver-accepts-one-row-one-update.md`):** *naming* (two place fields),
+*quoted* (`Fare` + `FareChip` ETA, `"Get a rido"`), a *price-changed* state this blueprint didn't
+anticipate — the fare is re-quoted server-side at confirm, and if it moved, the rider re-confirms
+rather than being silently charged a different number — *requested* ("looking for a driver,"
+cancelable), and now *matched* too: once a driver accepts, the sheet reads "Your driver is on the
+way" instead. No realtime — it appears on the rider's next reload, not live. `en route → arrived →
+in trip → rate` still need `started_at`, `in_progress`, and a driver-facing "I'm here" action, none
+of which exist yet. `"Get a rido"` keeps its name through every state per section 5 — a changed
+price never becomes a relabeled button.
 
 **Driver view:**
 Online/offline toggle (Signal when online), incoming-request card with fare + **"you keep $X (Y%)"** front and center (the wedge, made visible), month-to-date earnings with the tier progress (show the graduated bands filling — turn the commission model into a motivator), accept/decline. Tabular numerals throughout.
+
+**Built so far (`/drive`, ADR-0013):** the incoming-request card, as `RideCard` — fare, both
+addresses, and **"you keep $X (Y%)"** in tabular numerals, computed live via `commissionForRide`
+since a requested ride has no snapshot yet — and Accept, a single race-proof write. Not built: the
+online/offline toggle (availability means little while a driver pulls from a list rather than
+dispatch pushing to them), month-to-date earnings and tier-progress visualization, and decline
+(there's no reason yet to refuse one request in favor of scanning for another).
 
 ---
 

@@ -4,7 +4,7 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-29** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-08-30** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
@@ -12,9 +12,10 @@ The **money spine is complete end to end.** Scaffolding, context system, marketi
 database schema, commission math, and the `complete-ride` Edge Function that joins them are all
 built and tested — a ride can be rated and snapshotted correctly, including under concurrent
 completions. Maps — measuring, searching, and now rendering — are also built and proven end to
-end at `/dev/maps`, and a rider can now book a real ride at `/request`. What's missing is the
-rest of the **product around it**: no payments, no driver screen, and nothing that ever accepts
-a requested ride.
+end at `/dev/maps`, and a rider can book a real ride at `/request` and a driver can now accept one
+at `/drive` — `requested → accepted` is a real, race-proof write for the first time. What's
+missing is the rest of the **product around it**: no payments, no driver decline or
+`in_progress`, no dispatch/proximity, no realtime.
 
 ## What exists (verified, not assumed)
 
@@ -26,8 +27,9 @@ a requested ride.
 | `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
 | Marketing pages | `/`, `/drivers`, `/about` — **real UI**, built from `brand/exports/2026-08-07-landing-pages-v1.md` |
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
-| `/account`, `/drive` | **Role-aware.** `/account` shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row; `/drive` is a driver-facing placeholder, auth-gated the same way. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
-| `/request` | **Built, rider side.** Map-first, a bottom sheet with a real `quoteRideRequest()`/`requestRide()`/`cancelRide()` write path — `src/lib/rides/`, auth-gated, unlinked from anywhere so no real rider reaches the dead end past 'requested'. Nothing accepts a ride yet — no dispatch, no driver-side accept. ADR-0012, `architecture/ride-booking.md`. |
+| `/account` | **Role-aware.** Shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
+| `/request` | **Built, rider side.** Map-first, a bottom sheet with a real `quoteRideRequest()`/`requestRide()`/`cancelRide()` write path — `src/lib/rides/`, auth-gated, unlinked from anywhere. Shows "Your driver is on the way" once a driver accepts (no realtime — appears on reload). ADR-0012, `architecture/ride-booking.md`. |
+| `/drive` | **Built, driver side.** The compliance-status card plus a real open-request dispatch board for an active driver — `listOpenRequests()`/`acceptRide()`, `src/lib/rides/`, `RideCard` showing "you keep $X (Y%)" per request, computed live via `commissionForRide` since a requested ride has no snapshot yet. Accept is one race-proof conditional `UPDATE`, not a lock — ADR-0013. No online/offline toggle, no MTD tier-progress visualization, no decline. `architecture/ride-booking.md`. |
 | Maps | **Built end to end.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates; `map.ts` renders a map (`mapbox-gl`, the only file importing it, dynamically loaded) via an opaque `RideMapHandle` — no vendor type crosses into `RideMap.tsx`. `/dev/maps` (auth-gated, 404s outside development) proves search → measure → quote → render against a real Mapbox account. `geocode.ts` (Geocoding v6, always `permanent=true`) is the storable-coordinate path, **built and switched off** — ADR-0011 defers permanent geocoding for the pilot. Pure request-building, response-parsing, and map geometry are tested (77 tests). ADR-0010, ADR-0011, `architecture/maps.md`. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
@@ -35,7 +37,7 @@ a requested ride.
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Fare quoting (`quoteFare`) and the Prop 22 floor alongside the commission math. Bracketed commission, tier validation, flat-fee resolution. 95 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project live, schema applied to it.** Sixteen migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, and `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`), RLS on every table, eight pgTAP files (57 tests) plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The newest two migrations are verified locally but not yet applied to the live project** — `database.types.ts` does not yet carry `pickup_address`/`dropoff_address`, nullable `driver_id`, or `canceled_at`; `apps/web/src/lib/rides/server.ts` bridges that gap with two documented local type overrides until it's pushed and regenerated. |
+| Supabase | **Project live, schema applied to it.** Seventeen migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`, and the driver-accept policy + `rides_open_requests_idx` + `rides_one_active_per_driver`), RLS on every table, nine pgTAP files (65 tests) plus three standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The newest migration is verified locally but not yet applied to the live project** — `database.types.ts` already carries `pickup_address`/`dropoff_address`, nullable `driver_id`, and `canceled_at` (regenerated in `3b0e568`), so `apps/web/src/lib/rides/server.ts`'s two local type-override bridges from the previous migration are gone; nothing new needs one, since the driver-accept migration adds no column. |
 | `complete-ride` | **Built and tested.** `supabase/functions/complete-ride/` — pure `core.ts` (authorization + rating, 19 tests under **both** Node and Deno), `db.ts` (the only SDK importer), `index.ts` (HTTP, bounded compare-and-swap retry). ADR-0008. |
 | Fare pricing | **Built.** `quoteFare` + a per-market `fare_rate_cards` table, seeded for San Diego and calibrated to sit ~15% under a modelled UberX fare. `npm run calibrate` prints the report; `npm run check:calibration` fails in CI if the discount drifts or a driver would earn less than on an incumbent. ADR-0009. |
 | Prop 22 floor | `packages/pricing/src/earnings-floor.ts` — per-trip diagnostic plus the two-week aggregate the statute actually uses. Nothing enforces it yet; there is no payout run to enforce it in. |
@@ -43,17 +45,21 @@ a requested ride.
 
 ## What does not exist
 
-Stripe (subscriptions or Connect) · driver-side accept and dispatch (so a requested ride still
-has nowhere to go, and `complete-ride` still has no real ride created through the app to
-finish) · driver app.
+Stripe (subscriptions or Connect) · dispatch/proximity matching (every open request is visible to
+every active driver — correct at pilot volume, `pickup_geog` is null on every row regardless,
+ADR-0011) · driver decline · the `accepted → in_progress` transition and `started_at` · realtime
+(a rider learns of an accept, and a driver of another driver's win, only on reload) · driver app ·
+online/offline toggle · MTD tier-progress visualization.
 
 `complete-ride` is **deployed** to the live project (`supabase functions deploy complete-ride
---project-ref <ref> --use-api`) but not yet exercised end to end — nothing creates a `rides` row,
-so there is no real request to test it with beyond a hand-inserted row. Deploying it surfaced a
-real gap: `functions deploy` needs a `[functions.complete-ride]` entry in `supabase/config.toml`
-to resolve `@rido/pricing`, which `deno check`/`deno test` don't need because CI passes `--config`
-explicitly. Fixed and documented in `supabase/CLAUDE.md` and ADR-0005 so the next function doesn't
-rediscover it.
+--project-ref <ref> --use-api`) and, as of the driver-accept migration, finally has a real path to
+an `'accepted'` row to complete — nobody has run that end-to-end proof against the live project
+yet (needs a driver account and a manual accept, see `decisions/0013-driver-accepts-one-row-one-update.md`'s
+verification section), but it is no longer blocked on a hand-inserted row. Deploying it originally
+surfaced a real gap: `functions deploy` needs a `[functions.complete-ride]` entry in
+`supabase/config.toml` to resolve `@rido/pricing`, which `deno check`/`deno test` don't need
+because CI passes `--config` explicitly. Fixed and documented in `supabase/CLAUDE.md` and ADR-0005
+so the next function doesn't rediscover it.
 
 ## Build order
 
@@ -82,11 +88,11 @@ all five tables typed, so the Supabase clients' generics are load-bearing rather
 ✅ **Rider/driver distinction** — no `role` column: a driver identity is a matching `drivers` row,
 read via `getOwnDriverProfile()` (`apps/web/src/lib/drivers/`). A person can be both at once.
 `/account` shows a rider card to everyone and a driver card (with live compliance status) to
-anyone with a row; a new `(driver)/drive` placeholder is auth-gated the same way `/account` is.
-Post-login redirect still always lands on `/account` — deliberately not split yet. `/request`
-has real functionality now, but landing a rider straight into a live map on every sign-in isn't
-obviously right either; `/drive` still has nothing to redirect into. Revisit once both sides
-have opinions worth having.
+anyone with a row; `(driver)/drive` is auth-gated the same way `/account` is and now has real
+functionality of its own (the open-request board). Post-login redirect still always lands on
+`/account` — deliberately not split yet. Both `/request` and `/drive` have real functionality now,
+but landing a rider straight into a live map, or a driver straight into a dispatch board, on every
+sign-in isn't obviously right either. Revisit once both sides have opinions worth having.
 
 **Phase 2 — money spine.** ✅ **`packages/pricing` implemented and tested** — bracketed commission
 with boundary tests at every tier edge (`$0`, `$999.99`, `$1,000.00`, `$1,000.01`, `$2,999.99`,
@@ -101,9 +107,10 @@ out to be unbuildable from supabase-js, so the transaction moved into SQL and co
 from compare-and-swap instead (**ADR-0008**). Proved by a two-connection race
 (`supabase/tests/concurrent-apply-ride-commission.sh`): one `applied`, one `conflict` — and the
 test fails if the check is removed.
-✅ **Deployed** to the live project. ⬜ Exercise it against a real request — `/request` now
-creates real `rides` rows, but nothing ever moves one past `'requested'`, so `complete-ride`
-still needs a hand-inserted `'accepted'` row and a driver JWT until driver-side accept exists.
+✅ **Deployed** to the live project. ✅ **A real path to `'accepted'` exists** — driver accept
+(ADR-0013) means `complete-ride` no longer needs a hand-inserted row to reach. ⬜ Exercise it
+against a real request on the live project — that step still needs a human: a driver account, a
+booked ride, an accept, then a completion call against the deployed function.
 ✅ **Ride pricing** — `quoteFare`, the `fare_rate_cards` table, and a calibration check in CI
 (ADR-0009, `business/fare-pricing.md`). Two findings recorded there rather than discovered later: a
 RIDO driver beats an incumbent driver on every trip shape tested even at our worst commission band,
@@ -132,10 +139,11 @@ and provable end to end at `/dev/maps`. ✅ **Mapbox** — the vendor boundary, 
 (`map.ts`, `RideMap.tsx`), and a proving page are all built and tested against a real account.
 ✅ **Rider request flow** — `/request` books a real `rides` row through `src/lib/rides/`
 (ADR-0012): naming, a server-side quote, price-changed re-confirmation, and a cancelable
-'requested' state, behind a new `Sheet` primitive nothing in this repo had built. ⬜ Driver
-accept and dispatch — `matched` onward in the blueprint needs it, and it has its own
-concurrency problem (two drivers accepting one ride) that hasn't been designed. ⬜ Driver view
-(online/offline, incoming card with "you keep $X (Y%)", MTD tier progress).
+'requested' state, behind a new `Sheet` primitive nothing in this repo had built; now also shows
+"Your driver is on the way" once accepted. ✅ **Driver accept** — `/drive` lists the open pool with
+"you keep $X (Y%)" per request and a race-proof one-row `UPDATE` to take one (ADR-0013), closing
+`matched` in the rider blueprint. ⬜ Dispatch/proximity matching, driver decline, `in_progress`. ⬜
+Rest of the driver view (online/offline toggle, MTD tier-progress visualization).
 
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
 inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —

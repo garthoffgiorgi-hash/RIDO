@@ -4,12 +4,16 @@ import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
+import { listOpenRequests } from "@/lib/rides/server";
+import { OpenRequestsPanel } from "./OpenRequestsPanel";
 
 /**
- * Placeholder — driver dashboard. Scaffolding only, mirroring `(rider)/request`'s placeholder:
- * it exists to prove the plumbing (auth gate, driver-profile read) works end to end, not to be a
- * real driver surface yet. Real content — online/offline toggle, incoming ride cards, MTD tier
- * progress — is roadmap Phase 3.
+ * Driver dashboard. The compliance-status card is the original scaffolding, mirroring
+ * `(rider)/request`'s placeholder — it exists to prove the plumbing (auth gate, driver-profile
+ * read) works end to end. The open-request list below it is real: an active driver's dispatch
+ * board, ADR-0013. Online/offline toggle and MTD tier-progress visualization are still roadmap
+ * Phase 3 — availability means little while drivers pull from a list rather than dispatch
+ * pushing to them.
  *
  * Reachable by anyone signed in, driver or not: someone without a `drivers` row sees an honest
  * "you haven't applied" state rather than being redirected away, since there's no self-serve
@@ -19,16 +23,19 @@ import { isActiveDriver } from "@/lib/drivers/status";
 export default async function DrivePage() {
   const user = await requireUser();
   const driver = await getOwnDriverProfile(user);
+  const active = isActiveDriver(driver);
+
+  const openRequests = active && driver ? await listOpenRequests(driver) : null;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-ivory p-6">
-      <div className="w-full max-w-sm">
+    <main className="flex min-h-screen items-center bg-ivory p-6">
+      <div className="w-full max-w-sm space-y-4">
         <Card>
           {driver ? (
             <>
               <div className="mb-3 flex items-center justify-between">
                 <h1 className="font-sora text-2xl font-bold text-midnight">Driver status</h1>
-                <Badge tone={isActiveDriver(driver) ? "accent" : "neutral"}>{driver.status}</Badge>
+                <Badge tone={active ? "accent" : "neutral"}>{driver.status}</Badge>
               </div>
               <dl className="space-y-2 text-sm text-slate">
                 <div className="flex justify-between">
@@ -40,7 +47,7 @@ export default async function DrivePage() {
                   <dd className="font-semibold text-ink">{driver.vehicle_inspection_status}</dd>
                 </div>
               </dl>
-              {!isActiveDriver(driver) && (
+              {!active && (
                 <p className="mt-4 text-sm text-slate">
                   Both need to read "passed" before you can go online.
                 </p>
@@ -60,6 +67,13 @@ export default async function DrivePage() {
             </>
           )}
         </Card>
+
+        {openRequests &&
+          (openRequests.ok ? (
+            <OpenRequestsPanel initialRequests={openRequests.data} />
+          ) : (
+            <p className="text-[13px] text-danger">{openRequests.message}</p>
+          ))}
       </div>
     </main>
   );

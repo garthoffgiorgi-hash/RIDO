@@ -40,3 +40,4 @@ What this costs, what it rules out, what now has to be true.
 | [0010](0010-client-names-places-server-measures-trip.md) | The client names places; the server measures the trip | Accepted |
 | [0011](0011-what-a-completed-ride-records.md) | What a completed ride records | Accepted |
 | [0012](0012-rider-books-server-owns-the-write.md) | Rider books, server owns the write | Accepted |
+| [0013](0013-driver-accepts-one-row-one-update.md) | Driver accepts: one row, one conditional UPDATE | Accepted |

@@ -89,10 +89,12 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
     const result = await cancelRide(activeRide.id);
     setCanceling(false);
     if (result.ok) {
+      // Deliberately keep pickup/dropoff/quote rather than clearing them: re-ordering the same
+      // trip shouldn't mean re-searching both fields from scratch. The displayed quote can be
+      // stale by the time "Get a rido" is pressed again, but requestRide() always re-verifies the
+      // price server-side before booking regardless, so redisplaying it here is safe.
       setActiveRide(null);
-      setPickup(null);
-      setDropoff(null);
-      setQuote(null);
+      setError(null);
     } else {
       setError(result.message);
     }

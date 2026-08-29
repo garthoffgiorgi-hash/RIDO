@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PlaceSearch } from "@/components/domain/PlaceSearch";
 import { RideMap } from "@/components/domain/RideMap";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { FareChip } from "@/components/ui/FareChip";
+import { formatCents } from "@/components/ui/Fare";
 import type { Place } from "@/lib/maps/types";
 import {
   type DevRouteQuote,
@@ -12,10 +14,6 @@ import {
   getStorableCoordinate,
   type StorableCoordinateReport,
 } from "./actions";
-import { PlaceSearch } from "./PlaceSearch";
-
-const formatCents = (cents: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 
 const formatMeters = (meters: number) => `${(meters / 1609.344).toFixed(1)} mi`;
 const formatSeconds = (seconds: number) => `${Math.round(seconds / 60)} min`;

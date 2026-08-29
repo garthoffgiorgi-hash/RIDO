@@ -77,7 +77,7 @@ Two cases, two jobs, one constant accent.
 - **Inputs.** White fill, `--mist` border, radius 12, 44px tall (see Spacing & shape); focus → `--signal` ring. Labels in Slate, sentence case. Errors state what's wrong and how to fix it, in the interface's voice (no apologies).
 - **Fare / ETA chip.** Pill (radius 20), tinted Signal at low alpha, Signal text; tabular numerals. Used for "4 min away," distances, surge.
 - **Nav / top bar.** Lowercase `rido` wordmark left (the voice register, since it's in-product), minimal chrome, white or ivory.
-- **Bottom sheet.** The rideshare workhorse (request, driver-matched, in-progress). White, top radius 18, slides over a dimmed map. Tabular fare, primary CTA pinned bottom.
+- **Bottom sheet.** The rideshare workhorse (request, driver-matched, in-progress). White, top radius 18, slides over a dimmed map. Tabular fare, primary CTA pinned bottom. Dim value: `bg-ink/40` — undecided until `apps/web/src/components/ui/Sheet.tsx` needed one; recorded here now that it's built.
 - **Map.** Light style; **Midnight markers, not red pins.** Route line in Midnight; live car/driver dot in Signal.
 - **Toggle / status.** Driver online/offline as a clear switch; online = Signal.
 - **Avatar.** Initials circle, Signal tint bg, Midnight text.
@@ -111,6 +111,14 @@ Hero with the monument `RIDO` + a tangible-first headline (cheaper + fair, not "
 
 **Rider request flow:**
 Map-first (Midnight markers), bottom sheet for "where to?", fare + ETA shown in tabular numerals up front (honest pricing is the brand), `rido` lowercase in the top bar, primary "Get a rido" CTA. States: searching → matched (driver card) → en route → arrived → in trip → rate.
+
+**Built so far (`/request`, `docs/decisions/0012-rider-books-server-owns-the-write.md`):** the
+first two states as *naming* (two place fields) and *quoted* (`Fare` + `FareChip` ETA, `"Get a
+rido"`), plus a *price-changed* state this blueprint didn't anticipate — the fare is re-quoted
+server-side at confirm, and if it moved, the rider re-confirms rather than being silently charged
+a different number — and *requested* ("looking for a driver," cancelable). `matched` onward needs
+a driver to accept, which doesn't exist yet. `"Get a rido"` keeps its name through every state per
+section 5 — a changed price never becomes a relabeled button.
 
 **Driver view:**
 Online/offline toggle (Signal when online), incoming-request card with fare + **"you keep $X (Y%)"** front and center (the wedge, made visible), month-to-date earnings with the tier progress (show the graduated bands filling — turn the commission model into a motivator), accept/decline. Tabular numerals throughout.

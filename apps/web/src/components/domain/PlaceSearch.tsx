@@ -50,7 +50,12 @@ export function PlaceSearch({ label, selected, onSelect, near }: PlaceSearchProp
     return () => clearTimeout(timer);
   }, [query, near]);
 
-  if (selected) {
+  // Checking selected.coordinates, not just selected: "Change" below sets coordinates to null on
+  // an otherwise-unchanged Place specifically so this falls back through to the search box rather
+  // than clearing the field's remembered name outright. Checking bare `selected` truthiness would
+  // make "Change" a dead end — the object stays truthy, so this block would keep re-rendering the
+  // same collapsed pill with a Change button that does nothing.
+  if (selected?.coordinates) {
     return (
       <div className="flex items-center justify-between gap-3 rounded-input border border-mist bg-white px-3.5 py-2.5">
         <div className="min-w-0">

@@ -1,23 +1,25 @@
-import { cents } from "@rido/pricing";
+import { RiderTopBar } from "@/components/domain/RiderTopBar";
+import { requireUser } from "@/lib/auth/server";
+import { getActiveRide } from "@/lib/rides/server";
+import { RequestPanel } from "./RequestPanel";
 
-// Placeholder — ride request flow. Scaffolding only; real content is built directly in code
-// against brand/design-system.md section 6's blueprint (map-first, bottom sheet, fare/ETA up
-// front), not a Design mockup — see the design-vs-code split discussed for this surface.
-//
-// The `cents()` call below is a deliberate integration check, not real behavior: it proves
-// @rido/pricing resolves and type-checks through the Next.js bundler (transpilePackages in
-// next.config.ts), the same way the Deno spike proved it for Edge Functions. Delete once a real
-// fare is wired up.
-export default function RequestPage() {
-  const exampleFareCents = cents(840);
+/**
+ * The rider request flow — map-first, bottom sheet, fare up front
+ * (`brand/design-system.md` section 6). `requireUser()` is the security boundary, same as
+ * `/account` and `/drive`; `proxy.ts`'s `PROTECTED_PREFIXES` is the clean-redirect convenience.
+ *
+ * `getActiveRide()` runs here rather than inside the client panel so a page reload lands back on
+ * a live request instead of a blank "where to?" form — the same reasoning `/account` reads
+ * `getOwnDriverProfile()` server-side rather than fetching it after mount.
+ */
+export default async function RequestPage() {
+  const user = await requireUser();
+  const activeRide = await getActiveRide(user);
 
   return (
-    <main className="flex min-h-screen items-center justify-center p-8">
-      <div className="w-full max-w-sm rounded-card border border-mist bg-white p-6">
-        <p className="tabular font-sora text-2xl font-bold text-ink">
-          ${(exampleFareCents / 100).toFixed(2)}
-        </p>
-      </div>
-    </main>
+    <>
+      <RiderTopBar />
+      <RequestPanel initialActiveRide={activeRide} />
+    </>
   );
 }

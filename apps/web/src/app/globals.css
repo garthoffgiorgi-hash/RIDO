@@ -80,3 +80,17 @@ body {
   text-transform: uppercase;
   color: var(--color-slate);
 }
+
+/* "Reduced motion: all animations off except instant state transitions" (design-system.md:94-95).
+   Global rather than per-component so nothing animated — the sheet included — ships without it by
+   accident. `!important` is deliberate: this must win over every utility class unconditionally. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -18,10 +18,24 @@ export interface RideMapProps {
   readonly pickup?: Coordinates | null;
   readonly dropoff?: Coordinates | null;
   readonly route?: RouteGeometry | null;
+  /**
+   * `"card"` (default) — the original `/dev/maps` shape: rounded on all four corners, sized by
+   * `className`. `"bleed"` — full-bleed and square-cornered, `absolute inset-0`, for the map-first
+   * rider request surface (`brand/design-system.md` section 6). A `className` override alone would
+   * have relied on Tailwind class-order luck against the hardcoded `rounded-card`; this makes the
+   * choice explicit instead.
+   */
+  readonly shape?: "card" | "bleed";
   readonly className?: string;
 }
 
-export function RideMap({ pickup = null, dropoff = null, route = null, className }: RideMapProps) {
+export function RideMap({
+  pickup = null,
+  dropoff = null,
+  route = null,
+  shape = "card",
+  className,
+}: RideMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<RideMapHandle | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,8 +82,11 @@ export function RideMap({ pickup = null, dropoff = null, route = null, className
     if (pickup || dropoff) handle.fitToRoute();
   }, [ready, pickup, dropoff, route]);
 
+  const shapeClasses =
+    shape === "bleed" ? "absolute inset-0" : "relative overflow-hidden rounded-card";
+
   return (
-    <div className={`relative overflow-hidden rounded-card bg-mist ${className ?? ""}`}>
+    <div className={`${shapeClasses} bg-mist ${className ?? ""}`}>
       <div ref={containerRef} className="h-full w-full" />
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-ivory p-4 text-center text-sm text-slate">

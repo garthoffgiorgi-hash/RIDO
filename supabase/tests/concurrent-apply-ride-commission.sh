@@ -30,13 +30,20 @@ set -euo pipefail
 CONN="${1:-${PGDATABASE:-postgres}}"
 SLEEP_SECONDS=2
 DRIVER_AUTH_ID="f0000000-0000-0000-0000-000000000002"
+# Two distinct riders, not the driver's own id twice: rides_one_active_per_rider
+# (20260829120000) permits only one live ride per rider, and this script books two
+# 'accepted' rides at once to race a completion against. Which rider books which is
+# irrelevant to the compare-and-swap being proven here.
+RIDER_A_ID="f0000000-0000-0000-0000-000000000010"
+RIDER_B_ID="f0000000-0000-0000-0000-000000000011"
 FARE_CENTS=1000
 COMMISSION_CENTS=300
 PAYOUT_CENTS=700
 RATE_BPS=3000
 
 psql -d "$CONN" -v ON_ERROR_STOP=1 -q <<SQL
-insert into auth.users (id) values ('$DRIVER_AUTH_ID') on conflict do nothing;
+insert into auth.users (id) values ('$DRIVER_AUTH_ID'), ('$RIDER_A_ID'), ('$RIDER_B_ID')
+  on conflict do nothing;
 insert into drivers (auth_user_id, full_name, status, background_check_status, vehicle_inspection_status)
 values ('$DRIVER_AUTH_ID', 'CAS Test Driver', 'active', 'passed', 'passed')
 on conflict (auth_user_id) do nothing;
@@ -48,10 +55,9 @@ delete from driver_monthly_stats
   where driver_id = (select id from drivers where auth_user_id = '$DRIVER_AUTH_ID');
 
 insert into rides (rider_id, driver_id, status, fare_cents)
-select '$DRIVER_AUTH_ID',
-       (select id from drivers where auth_user_id = '$DRIVER_AUTH_ID'),
-       'accepted', $FARE_CENTS
-from generate_series(1, 2);
+values
+  ('$RIDER_A_ID', (select id from drivers where auth_user_id = '$DRIVER_AUTH_ID'), 'accepted', $FARE_CENTS),
+  ('$RIDER_B_ID', (select id from drivers where auth_user_id = '$DRIVER_AUTH_ID'), 'accepted', $FARE_CENTS);
 SQL
 
 read -r RIDE_A RIDE_B <<<"$(psql -d "$CONN" -tA -F' ' -c "

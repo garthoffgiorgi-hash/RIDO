@@ -42,9 +42,10 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   (Stripe webhooks; the rollup trigger) since a driver-writable fee state or MTD figure is a
   direct revenue/commission-integrity hole, not a permissions nuance.
 - Riders read only their own `rides`; drivers read only rides where they're the driver. Neither
-  can currently write to `rides` at all — the booking flow doesn't exist yet, so there's no real
-  transition logic to write a policy for. Every write goes through the service role until that
-  flow ships its own migration with the policies it actually needs.
+  has ever had an `INSERT`/`UPDATE` grant on `rides`, and the rider booking flow that now
+  exists (ADR-0012) still doesn't need one — `requestRide()`/`cancelRide()` write through the
+  service role, gated by `requireUser()` inside the function rather than by a policy. Driver
+  accept, when it's built, decides its own write path the same way rather than inheriting one.
 - Commission columns on `rides` are writable **only by the service role**. Not by the driver, not
   by the rider, not by an authenticated user with a clever payload.
 - Write a pgTAP test for every policy. A policy with no test is an assumption.
@@ -86,6 +87,11 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   later backfill, which is cheaper than paying per booking. `distance_meters` is the distance
   actually driven and `duration_seconds` is `completed_at - started_at` — neither is ever the
   routed estimate. (ADR-0011)
+- **`rides.driver_id` is nullable while `status` is `'requested'` or `'canceled'`**, enforced by
+  `rides_driver_present_unless_pending` — every other status still requires one, in the
+  database, not by convention. `rides_one_active_per_rider` (a partial unique index) is what
+  actually stops a rider from having two live requests; an app-level check would race under a
+  concurrent second request. (ADR-0012)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections.
 

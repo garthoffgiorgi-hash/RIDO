@@ -14,7 +14,14 @@
 begin;
 select plan(16);
 
-insert into auth.users (id) values ('e0000000-0000-0000-0000-000000000001');
+insert into auth.users (id) values
+  ('e0000000-0000-0000-0000-000000000001'),
+  -- A second rider for ride_b: rides_one_active_per_rider (20260829120000) permits only one
+  -- live ride per rider, and ride_a/ride_b coexist as 'accepted'/'requested' through most of
+  -- this file. Which rider books which ride is irrelevant to what's under test here —
+  -- apply_ride_commission's outcomes — so giving them separate riders sidesteps the
+  -- constraint without changing anything the test actually asserts.
+  ('e0000000-0000-0000-0000-000000000002');
 insert into drivers (auth_user_id, full_name, status, background_check_status, vehicle_inspection_status)
 values ('e0000000-0000-0000-0000-000000000001', 'Driver E', 'active', 'passed', 'passed');
 
@@ -33,7 +40,7 @@ insert into t_ids (label, id) select 'ride_a', id from a;
 
 with b as (
   insert into rides (rider_id, driver_id, status, fare_cents)
-  values ('e0000000-0000-0000-0000-000000000001',
+  values ('e0000000-0000-0000-0000-000000000002',
           (select id from t_ids where label = 'driver'), 'requested', 2000)
   returning id
 )

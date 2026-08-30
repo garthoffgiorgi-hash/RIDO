@@ -69,7 +69,10 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   rate the ride with `@rido/pricing` → hand the result to `apply_ride_commission`, which locks,
   re-checks the MTD position, and writes. The snapshot and `status = 'completed'` are **one
   UPDATE**, because `rides_commission_present_iff_completed` won't accept them as two. Full flow
-  and the concurrency argument: `docs/architecture/ride-completion.md` (ADR-0008).
+  and the concurrency argument: `docs/architecture/ride-completion.md` (ADR-0008). **The app now
+  calls it** (ADR-0014) — `apps/web/CLAUDE.md`'s Rules section is where the caller-side pattern
+  (forward the driver's own token, never the service-role key) lives, since that half of the
+  contract is the app's to keep, not this function's.
 - **The transaction belongs in SQL, not the function.** supabase-js auto-commits every call, so a
   lock taken from Deno is released before the commission is computed. Correctness comes from
   compare-and-swap: the caller passes back the MTD figure it rated against, and
@@ -94,8 +97,9 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   `dropoff_address` hold what the rider saw; `pickup_lat/lng` stay null because Search Box results
   may not be stored and permanent geocoding is deliberately off. The addresses are the input to a
   later backfill, which is cheaper than paying per booking. `distance_meters` is the distance
-  actually driven and `duration_seconds` is `completed_at - started_at` — neither is ever the
-  routed estimate. (ADR-0011)
+  actually driven and `duration_seconds` is `completed_at - started_at`, derived by a trigger
+  (`set_ride_duration`, ADR-0014) rather than computed at write time — neither is ever the routed
+  estimate. (ADR-0011)
 - **`rides.driver_id` is nullable while `status` is `'requested'` or `'canceled'`**, enforced by
   `rides_driver_present_unless_pending` — every other status still requires one, in the
   database, not by convention. `rides_one_active_per_rider` (a partial unique index) is what
@@ -109,6 +113,12 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   locking serializes two drivers racing it without any of `apply_ride_commission`'s compare-and-
   swap machinery. That machinery exists because completion touches *two* rows (the ride and the
   month rollup); reaching for it here would solve a problem accept doesn't have. (ADR-0013)
+- **`rides.started_at` is required exactly while `status = 'in_progress'`**
+  (`rides_started_at_present_iff_in_progress`) and required nowhere else — a ride may still
+  complete straight from `'accepted'` with no `started_at` at all, since `apply_ride_commission`
+  has always accepted both statuses. Start-trip is the same conditional-`UPDATE` shape accept
+  uses: `WHERE status = 'accepted' AND driver_id = ?`, no lock needed, only this ride's own driver
+  can ever match the predicate. (ADR-0014)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections.
 
@@ -128,10 +138,16 @@ covers the row does.
 
 The last one has a real limit: `pg_prove`/`supabase test db` run one connection at a time, so
 pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connection locking.
-`concurrent-completion.sh` and `concurrent-apply-ride-commission.sh` (plain `psql`, no added
-dependency) are the separate, standalone proofs that `reserve_driver_month()`/
-`apply_ride_commission()` actually serialize two completions rather than letting one read a stale
+`concurrent-completion.sh` (plain `psql`, no added dependency) is the standalone proof that
+`reserve_driver_month()` actually blocks a second completion rather than letting it read a stale
 month-to-date figure. `concurrent-accept-ride.sh` proves the same class of thing for accept — two
 connections racing one ride, asserting exactly one wins and the loser genuinely blocked rather than
 losing by luck — even though accept needs no lock of its own to get there (ADR-0013). Run these
-manually against a real instance; none of them are part of `test db`.
+manually against a real instance; neither is part of `test db`.
+
+**`concurrent-apply-ride-commission.sh` is retired.** It raced two *different* rides for one
+driver to completion — but `rides_one_active_per_driver` (ADR-0013) makes that setup illegal now:
+a driver holds at most one `'accepted'`/`'in_progress'` ride at a time, so two of their rides can
+never both be completable at once through any real code path. `reserve_driver_month()`'s lock
+stays regardless — it becomes load-bearing again the moment a future feature relaxes that
+constraint (driver ride queuing, say). Full account: `docs/architecture/ride-completion.md`.

@@ -44,7 +44,7 @@ Tokens come from `brand/design-system.md`, mapped **once** into `src/app/globals
 | `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthToDateCents(driverId)` — and hands both to `commissionForRide()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. What powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet |
-| `src/lib/rides/` | Booking and accept: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, `listOpenRequests`, `acceptRide` — all service-role writes). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
+| `src/lib/rides/` | Booking, accept, and completion: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `start.ts` (pure `canStartTrip`), `completion-errors.ts` (pure, `complete-ride`'s HTTP responses → RIDO's voice + retryability), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, `getRecentlyCompletedRide`, `listOpenRequests`, `acceptRide`, `startTrip` — all service-role writes — and `completeRide`, which calls the deployed `complete-ride` Edge Function instead). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
@@ -117,6 +117,12 @@ policy was added. `acceptRide(rideId)` pre-flight-checks with `canAcceptRide()`
 accept touches one row, so Postgres's own row-level locking is the whole mechanism. ADR-0013,
 `docs/architecture/ride-booking.md`.
 
+**Start and complete finish the loop.** `startTrip(rideId)` is the same conditional-`UPDATE` shape
+again. `completeRide(rideId)` instead calls the deployed `complete-ride` Edge Function —
+**forwarding the driver's own access token**, never the service-role key, which would make
+`authorizeCompletion` skip its checks entirely (invariant 6). `getDriverActiveRide(driver)` is the
+read `/drive` needed to survive a reload. ADR-0014, `ride-booking.md`, `ride-completion.md`.
+
 ## Maps
 
 **The browser may name two places. Only the server may measure the trip between them.** (ADR-0010)
@@ -148,9 +154,10 @@ never an input to a price; a client-supplied *coordinate pair* is fine. Place se
   `resolveStorableCoordinates()` in `server.ts`. It is **built and switched off**: the pilot stores
   `rides.pickup_address`/`dropoff_address` and defers coordinates to a later backfill. Only the
   `/dev/maps` button calls it, because it is the one call that spends real money.
-- `rides.distance_meters`/`duration_seconds` hold the **actual** trip, never the routed estimate —
-  duration from `completed_at − started_at`, distance from a GPS trace once the driver app exists.
-  The fare is never recomputed from either. (ADR-0011)
+- `rides.distance_meters`/`duration_seconds` hold the **actual** trip, never the routed estimate.
+  `duration_seconds` is now derived by trigger from `completed_at − started_at` on completion
+  (null if `started_at` never was); `distance_meters` still needs a GPS trace. Fare is never
+  recomputed from either. (ADR-0011, ADR-0014)
 
 ## Rules
 
@@ -169,6 +176,9 @@ never an input to a price; a client-supplied *coordinate pair* is fine. Place se
   (`const { id } = await params`). Easy to get wrong copying older Next.js examples.
 - The service-role client is importable **only** from `src/lib/supabase/server.ts`, which carries
   `import "server-only"`. It must never be reachable from a client component.
+- **Calling a deployed Edge Function is a server-only `fetch`**, in the domain's `server.ts`, never
+  a component. Forward the user's own access token as the bearer, not the service-role key — the
+  latter skips a function's own ownership/compliance checks. `completeRide()` is the reference. (ADR-0014)
 - Components receive **cents**. Money is formatted at the very edge with `Intl.NumberFormat`.
   No component does arithmetic on a fare.
 - Any fare, payout, or percentage shown to a driver comes from a **snapshotted `rides` row** or

@@ -12,7 +12,7 @@ import type { Place } from "@/lib/maps/types";
 // Types only — the functions themselves come from ./actions, the "use server" bridge. Importing
 // a value (not just a type) from server.ts here would pull server-only code into the client
 // bundle; Next.js refuses that build, which is how this was caught.
-import type { ActiveRide, RideQuote } from "@/lib/rides/server";
+import type { ActiveRide, CompletedRideSummary, RideQuote } from "@/lib/rides/server";
 import { cancelRide, quoteRideRequest, requestRide } from "./actions";
 
 const formatEta = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min away`;
@@ -23,10 +23,19 @@ const formatEta = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))}
  * means by "slides over a dimmed map": the sheet's backdrop dim is the standing visual
  * relationship with the map here, not a modal that opens and closes.
  */
-export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveRide | null }) {
+export function RequestPanel({
+  initialActiveRide,
+  initialRecentlyCompleted,
+}: {
+  initialActiveRide: ActiveRide | null;
+  initialRecentlyCompleted: CompletedRideSummary | null;
+}) {
   const router = useRouter();
 
   const [activeRide, setActiveRide] = useState<ActiveRide | null>(initialActiveRide);
+  const [recentlyCompleted, setRecentlyCompleted] = useState<CompletedRideSummary | null>(
+    initialRecentlyCompleted,
+  );
   const [pickup, setPickup] = useState<Place | null>(null);
   const [dropoff, setDropoff] = useState<Place | null>(null);
   // Captured once, at mount, from whatever ride was active then — not kept in sync afterward.
@@ -118,7 +127,7 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
       <Sheet
         open
         onClose={() => router.push("/account")}
-        title={activeRide ? "Your ride" : "Where to?"}
+        title={activeRide ? "Your ride" : recentlyCompleted ? "Trip complete" : "Where to?"}
         className="max-h-[75vh] overflow-y-auto"
       >
         <div className="space-y-4 p-5 pb-8">
@@ -127,7 +136,9 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
               <p className="font-sora text-heading font-semibold text-ink">
                 {activeRide.status === "accepted"
                   ? "Your driver is on the way"
-                  : "Looking for a driver"}
+                  : activeRide.status === "in_progress"
+                    ? "You're on your way"
+                    : "Looking for a driver"}
               </p>
               <div className="space-y-1 text-[14px] text-slate">
                 <p>{activeRide.pickupAddress ?? "Pickup"}</p>
@@ -135,14 +146,35 @@ export function RequestPanel({ initialActiveRide }: { initialActiveRide: ActiveR
               </div>
               <Fare cents={activeRide.fareCents} />
               {error && <p className="text-[13px] text-danger">{error}</p>}
+              {/* canRiderCancel() is 'requested'-only server-side, same as here — a driver who
+                  has already committed isn't offered a button that can only fail. */}
+              {activeRide.status === "requested" && (
+                <Button
+                  variant="secondary"
+                  size="lg"
+                  fullWidth
+                  onClick={handleCancel}
+                  disabled={canceling}
+                >
+                  {canceling ? "Canceling…" : "Cancel"}
+                </Button>
+              )}
+            </>
+          ) : recentlyCompleted ? (
+            <>
+              <p className="font-sora text-heading font-semibold text-ink">Trip complete</p>
+              <div className="space-y-1 text-[14px] text-slate">
+                <p>{recentlyCompleted.pickupAddress ?? "Pickup"}</p>
+                <p>{recentlyCompleted.dropoffAddress ?? "Dropoff"}</p>
+              </div>
+              <Fare cents={recentlyCompleted.fareCents} />
               <Button
-                variant="secondary"
+                variant="primary"
                 size="lg"
                 fullWidth
-                onClick={handleCancel}
-                disabled={canceling}
+                onClick={() => setRecentlyCompleted(null)}
               >
-                {canceling ? "Canceling…" : "Cancel"}
+                Book another ride
               </Button>
             </>
           ) : (

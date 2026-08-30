@@ -4,16 +4,19 @@ import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
-import { listOpenRequests } from "@/lib/rides/server";
+import { getDriverActiveRide, listOpenRequests } from "@/lib/rides/server";
+import { CurrentRidePanel } from "./CurrentRidePanel";
 import { OpenRequestsPanel } from "./OpenRequestsPanel";
 
 /**
  * Driver dashboard. The compliance-status card is the original scaffolding, mirroring
  * `(rider)/request`'s placeholder — it exists to prove the plumbing (auth gate, driver-profile
- * read) works end to end. The open-request list below it is real: an active driver's dispatch
- * board, ADR-0013. Online/offline toggle and MTD tier-progress visualization are still roadmap
- * Phase 3 — availability means little while drivers pull from a list rather than dispatch
- * pushing to them.
+ * read) works end to end. Below it: the driver's own live ride if they have one
+ * (`CurrentRidePanel`, ADR-0014), or the open-request dispatch board if they don't
+ * (`OpenRequestsPanel`, ADR-0013) — `rides_one_active_per_driver` guarantees these are mutually
+ * exclusive, so `listOpenRequests` doesn't even run when a current ride exists. Online/offline
+ * toggle and MTD tier-progress visualization are still roadmap Phase 3 — availability means
+ * little while drivers pull from a list rather than dispatch pushing to them.
  *
  * Reachable by anyone signed in, driver or not: someone without a `drivers` row sees an honest
  * "you haven't applied" state rather than being redirected away, since there's no self-serve
@@ -25,7 +28,9 @@ export default async function DrivePage() {
   const driver = await getOwnDriverProfile(user);
   const active = isActiveDriver(driver);
 
-  const openRequests = active && driver ? await listOpenRequests(driver) : null;
+  const currentRide = active && driver ? await getDriverActiveRide(driver) : null;
+  const hasNoActiveRide = currentRide?.ok && currentRide.data === null;
+  const openRequests = hasNoActiveRide && driver ? await listOpenRequests(driver) : null;
 
   return (
     <main className="flex min-h-screen items-center bg-ivory p-6">
@@ -67,6 +72,12 @@ export default async function DrivePage() {
             </>
           )}
         </Card>
+
+        {currentRide && !currentRide.ok && (
+          <p className="text-[13px] text-danger">{currentRide.message}</p>
+        )}
+
+        {currentRide?.ok && currentRide.data && <CurrentRidePanel ride={currentRide.data} />}
 
         {openRequests &&
           (openRequests.ok ? (

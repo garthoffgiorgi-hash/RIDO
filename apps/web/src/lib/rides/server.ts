@@ -12,15 +12,23 @@ import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 import { canAcceptRide, type OpenRide } from "./accept.ts";
+import { completionErrorMessage } from "./completion-errors.ts";
 import { failed, type RidesResult } from "./result.ts";
+import { canStartTrip, type StartableRide } from "./start.ts";
 import { ACTIVE_STATUSES, canRiderCancel, type RideStatus } from "./status.ts";
 
 /**
- * The booking half (rider) and the accept half (driver): quote a trip, book it, read the one
- * ride that's live, cancel it, list what's open, accept one. `complete-ride`'s SDK boundary is
- * the model — a service-role write reached through exactly the functions here, never a client
- * insert. See ADR-0012, ADR-0013.
+ * The booking half (rider), the accept half (driver), and the completion half that closes the
+ * loop: quote a trip, book it, read the one ride that's live, cancel it, list what's open, accept
+ * one, start it, complete it. `complete-ride`'s SDK boundary is the model for booking and accept
+ * — a service-role write reached through exactly the functions here, never a client insert.
+ * Completion is different in kind: `complete-ride` is not a table this module writes to directly,
+ * it is a deployed Edge Function this module *calls*, forwarding the signed-in driver's own
+ * session rather than re-implementing what it already enforces. See ADR-0012, ADR-0013, ADR-0014.
  */
+
+const messageOf = (error: unknown): string =>
+  error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
@@ -336,4 +344,305 @@ export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
   }
 
   return { ok: true, data: null };
+}
+
+export interface DriverActiveRide {
+  readonly id: string;
+  readonly status: "accepted" | "in_progress";
+  readonly pickupAddress: string | null;
+  readonly dropoffAddress: string | null;
+  readonly fareCents: number;
+  readonly driverPayoutCents: number;
+  readonly commissionRateBps: number;
+  readonly startedAt: string | null;
+}
+
+/**
+ * The signed-in driver's own live ride, or `null` — the read `/drive` needed and never had.
+ * Without this, accepting a ride only ever existed in the accepting browser tab's local state;
+ * `rides_one_active_per_driver` guarantees at most one row, so `maybeSingle()` is exact, not
+ * optimistic.
+ *
+ * Priced the same way `listOpenRequests` prices the open pool: no snapshot exists until
+ * `'completed'` (`rides_commission_present_iff_completed`), so "you keep $X" is computed live via
+ * `commissionForRide` against this driver's current month-to-date position, never arithmetic here.
+ */
+export async function getDriverActiveRide(
+  driver: DriverProfile,
+): Promise<RidesResult<DriverActiveRide | null>> {
+  const supabase = await createServerClient();
+  const { data: ride, error } = await supabase
+    .from("rides")
+    .select("id, status, fare_cents, pickup_address, dropoff_address, started_at")
+    .eq("driver_id", driver.id)
+    .in("status", ["accepted", "in_progress"])
+    .maybeSingle();
+
+  if (error) {
+    return failed("We couldn't load your current ride. Try again in a moment.");
+  }
+  if (!ride) {
+    return { ok: true, data: null };
+  }
+
+  const tiers = await getActiveCommissionTiers();
+  if (!tiers.ok) return tiers;
+
+  const mtdGrossCents = await getDriverMonthToDateCents(driver.id);
+  if (!mtdGrossCents.ok) return mtdGrossCents;
+
+  const { driverPayoutCents, commissionRateBps } = commissionForRide({
+    fareCents: cents(ride.fare_cents),
+    mtdGrossCents: cents(mtdGrossCents.data),
+    tiers: tiers.data,
+  });
+
+  return {
+    ok: true,
+    data: {
+      id: ride.id,
+      status: ride.status as "accepted" | "in_progress",
+      pickupAddress: ride.pickup_address,
+      dropoffAddress: ride.dropoff_address,
+      fareCents: ride.fare_cents,
+      driverPayoutCents,
+      commissionRateBps,
+      startedAt: ride.started_at,
+    },
+  };
+}
+
+/**
+ * Moves an accepted ride to `'in_progress'` for the signed-in driver.
+ *
+ * Same shape as `acceptRide`: `canStartTrip()` runs first as a fast, friendly pre-flight check
+ * (read through the service role — an already-moved-on ride may not be this driver's own row
+ * under RLS, and the refusal needs to say why), then the conditional `UPDATE` repeats the whole
+ * predicate — `status = 'accepted' AND driver_id = ?` — as the actual mechanism. There is no
+ * multi-driver race here the way accept has (only this ride's own driver can ever match the
+ * predicate), but a double-tap of the same button is a real case: the second call's `UPDATE`
+ * matches zero rows once the first has already moved the row to `'in_progress'`.
+ */
+export async function startTrip(rideId: string): Promise<RidesResult<null>> {
+  const user = await requireUser();
+  const driver = await getOwnDriverProfile(user);
+
+  if (!driver) {
+    return failed("You don't have a driver profile yet.");
+  }
+
+  const service = createServiceRoleClient();
+
+  const { data: ride, error: readError } = await service
+    .from("rides")
+    .select("status, driver_id")
+    .eq("id", rideId)
+    .maybeSingle();
+
+  if (readError || !ride) {
+    return failed("We couldn't find that ride.");
+  }
+
+  const startable: StartableRide = { status: ride.status, driverId: ride.driver_id };
+  const decision = canStartTrip(startable, driver.id, driver.status);
+  if (!decision.allowed) {
+    return failed(decision.message);
+  }
+
+  const { data: started, error: updateError } = await service
+    .from("rides")
+    .update({ status: "in_progress", started_at: new Date().toISOString() })
+    .eq("id", rideId)
+    .eq("status", "accepted")
+    .eq("driver_id", driver.id)
+    .select("id");
+
+  if (updateError) {
+    return failed("We couldn't start that trip. Try again in a moment.");
+  }
+
+  if (!started || started.length === 0) {
+    return failed("This ride is no longer accepted. Reload and try again.");
+  }
+
+  return { ok: true, data: null };
+}
+
+/** How long to wait for `complete-ride` before giving up. Longer than Mapbox's 4s (`maps/server.ts`)
+ * because completion holds a per-driver-month lock and may retry the compare-and-swap up to
+ * `MAX_RATING_ATTEMPTS` times server-side before answering. */
+const COMPLETE_RIDE_TIMEOUT_MS = 8_000;
+
+export interface RideCompletion {
+  readonly rideId: string;
+  readonly status: string;
+  readonly fareCents: number;
+  readonly commissionRateBps: number;
+  readonly commissionCents: number;
+  readonly driverPayoutCents: number;
+  readonly completedAt: string;
+  readonly alreadyCompleted: boolean;
+}
+
+/** `RidesResult`'s two-shape union has no room for "and here's whether retrying would help" —
+ * same reason `RequestRideOutcome` above is its own type rather than a `RidesResult`. */
+export type CompleteRideOutcome =
+  | { readonly kind: "completed"; readonly completion: RideCompletion }
+  | { readonly kind: "failed"; readonly message: string; readonly retryable: boolean };
+
+/**
+ * Completes a ride by calling the deployed `complete-ride` Edge Function — the first call this
+ * app has ever made to it. `complete-ride` has done the reading, the rating, and the
+ * compare-and-swap write since ADR-0008; this function's only job is reaching it correctly and
+ * translating what comes back.
+ *
+ * **Forwards the signed-in driver's own access token as the bearer.** `complete-ride`'s
+ * `resolveCaller` also accepts the service-role key, but a `service_role` caller makes
+ * `authorizeCompletion` skip the ownership and driver-active checks entirely (see
+ * `supabase/functions/complete-ride/core.ts`) — which would move root `CLAUDE.md` invariant 6 out
+ * of a tested pure function and into this one, untested. Forwarding the driver's token keeps
+ * `authorizeCompletion` the real gate, exactly where ADR-0008 put it.
+ *
+ * `requireUser()`'s own `getUser()` call already verified this session against the auth server;
+ * `getSession()` below only lifts that already-verified session's token for forwarding, doing no
+ * further security work of its own — `complete-ride` re-verifies the token independently
+ * (`admin.auth.getUser(token)`) regardless of how it arrived. `rideId` is never a value a person
+ * types; it always comes from a `rides.id` this module itself just read, so it needs no UUID
+ * validation here the way an externally-typed field would.
+ */
+export async function completeRide(rideId: string): Promise<CompleteRideOutcome> {
+  await requireUser();
+
+  const supabase = await createServerClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    return {
+      kind: "failed",
+      message: "You're signed out. Sign in again and retry.",
+      retryable: false,
+    };
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) {
+    return {
+      kind: "failed",
+      message: "Ride completion isn't configured. This one's ours to fix.",
+      retryable: false,
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/complete-ride`, {
+      method: "POST",
+      // A completion is never replayed from a cache — it's the one call in this codebase that
+      // writes money, and `no-store` is the same non-negotiable maps/server.ts already applies to
+      // a routed duration.
+      cache: "no-store",
+      signal: AbortSignal.timeout(COMPLETE_RIDE_TIMEOUT_MS),
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey,
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ rideId }),
+    });
+  } catch (error) {
+    const { message, retryable } = completionErrorMessage({ raw: messageOf(error) });
+    return { kind: "failed", message, retryable };
+  }
+
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok) {
+    const raw =
+      typeof (body as { error?: unknown })?.error === "string"
+        ? (body as { error: string }).error
+        : undefined;
+    const { message, retryable } = completionErrorMessage({ status: response.status, raw });
+    return { kind: "failed", message, retryable };
+  }
+
+  const success = body as {
+    rideId: string;
+    status: string;
+    fareCents: number;
+    commissionRateBps: number;
+    commissionCents: number;
+    driverPayoutCents: number;
+    completedAt: string;
+    alreadyCompleted: boolean;
+  };
+
+  return {
+    kind: "completed",
+    completion: {
+      rideId: success.rideId,
+      status: success.status,
+      fareCents: success.fareCents,
+      commissionRateBps: success.commissionRateBps,
+      commissionCents: success.commissionCents,
+      driverPayoutCents: success.driverPayoutCents,
+      completedAt: success.completedAt,
+      alreadyCompleted: success.alreadyCompleted,
+    },
+  };
+}
+
+/** How long a completed ride still shows the rider's trip-complete summary before the sheet
+ * reverts to a plain "Where to?" form on the next load. A display heuristic only — no money or
+ * lifecycle state depends on this number, unlike every timestamp it compares against. */
+const COMPLETED_RIDE_FRESHNESS_MS = 5 * 60 * 1000;
+
+export interface CompletedRideSummary {
+  readonly id: string;
+  readonly pickupAddress: string | null;
+  readonly dropoffAddress: string | null;
+  readonly fareCents: number;
+  readonly completedAt: string;
+}
+
+/**
+ * The rider's own most recently completed ride, if it finished within the freshness window —
+ * what closes the loop visually once `getActiveRide()` goes back to `null` on completion.
+ * Deliberately carries no commission or payout figures: those are the driver's, never the
+ * rider's, to see.
+ *
+ * Swallows a read error into `null` rather than throwing, unlike `getActiveRide` — this backs a
+ * dismissable summary, not the booking gate, so the honest degrade is silently falling back to
+ * the plain form rather than failing the whole page over a nice-to-have.
+ */
+export async function getRecentlyCompletedRide(user: User): Promise<CompletedRideSummary | null> {
+  const supabase = await createServerClient();
+  const cutoff = new Date(Date.now() - COMPLETED_RIDE_FRESHNESS_MS).toISOString();
+
+  const { data, error } = await supabase
+    .from("rides")
+    .select("id, pickup_address, dropoff_address, fare_cents, completed_at")
+    .eq("rider_id", user.id)
+    .eq("status", "completed")
+    .gte("completed_at", cutoff)
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data || !data.completed_at) return null;
+
+  return {
+    id: data.id,
+    pickupAddress: data.pickup_address,
+    dropoffAddress: data.dropoff_address,
+    fareCents: data.fare_cents,
+    completedAt: data.completed_at,
+  };
 }

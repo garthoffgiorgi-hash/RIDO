@@ -41,3 +41,4 @@ What this costs, what it rules out, what now has to be true.
 | [0011](0011-what-a-completed-ride-records.md) | What a completed ride records | Accepted |
 | [0012](0012-rider-books-server-owns-the-write.md) | Rider books, server owns the write | Accepted |
 | [0013](0013-driver-accepts-one-row-one-update.md) | Driver accepts: one row, one conditional UPDATE | Accepted |
+| [0014](0014-app-calls-complete-ride.md) | The app calls `complete-ride`; it doesn't re-orchestrate it | Accepted |

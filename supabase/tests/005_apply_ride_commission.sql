@@ -3,10 +3,15 @@
 -- Covers every outcome the function can return, plus the two things it must NOT be able to do:
 -- bypass the write-once snapshot trigger, or be callable by anyone but the service role.
 --
--- What this file cannot prove is the concurrency claim itself — that two simultaneous
--- completions for one driver yield one 'applied' and one 'conflict'. pg_prove runs a single
--- connection, so that proof is supabase/tests/concurrent-apply-ride-commission.sh, run
--- separately. Same division as 004 and concurrent-completion.sh.
+-- This file used to note that the concurrency claim itself — two simultaneous completions for
+-- one driver yielding one 'applied' and one 'conflict' — needed a separate two-connection script,
+-- since pg_prove runs a single connection. That script (concurrent-apply-ride-commission.sh) is
+-- retired: rides_one_active_per_driver (ADR-0013) makes its own setup illegal, because a driver
+-- can hold at most one 'accepted'/'in_progress' ride at a time — two rides for one driver can no
+-- longer BE simultaneously completable, through any real code path. reserve_driver_month's lock
+-- stays in place regardless: it becomes load-bearing again the moment a future feature relaxes
+-- that constraint (e.g. letting a driver queue a second ride). Full account:
+-- docs/architecture/ride-completion.md, docs/decisions/0014-app-calls-complete-ride.md.
 --
 -- The commission figures below are arbitrary consistent values, not RIDO's rates: this function
 -- stores what it is given and never computes a rate (root CLAUDE.md invariant 5). The bracketing

@@ -132,10 +132,20 @@ both addresses, and **"you keep $X (Y%)"** in tabular numerals, computed live vi
 write. Once accepted, `CurrentRidePanel` takes over with the same live figure and one button that
 becomes **Start trip**, then **Complete ride** — completing swaps it for the real earned amount,
 the first number in this app ever computed by the deployed `complete-ride` function rather than
-locally. Not built: the online/offline toggle (availability means little while a driver pulls from
-a list rather than dispatch pushing to them), month-to-date earnings and tier-progress
-visualization, and decline (there's no reason yet to refuse one request in favor of scanning for
-another).
+locally. Above both sits `PayoutCard` (ADR-0015) — an **Earnings** card leading with the amount
+already sent to the driver's bank as a `Fare`, then anything still owed. Until Connect onboarding
+finishes it carries an Accent/live button ("Connect your bank", or "Finish payout setup" once
+started) into Stripe's hosted flow, since RIDO never collects a bank detail itself. Not built: the
+online/offline toggle (availability means little while a driver pulls from a list rather than
+dispatch pushing to them), month-to-date earnings and tier-progress visualization, and decline
+(there's no reason yet to refuse one request in favor of scanning for another).
+
+**A payout state is never dressed as a failure.** Money owed but not yet sent — a driver who hasn't
+linked a bank, a transfer that will be retried — is Slate, and says the earnings are recorded and
+waiting. Only a terminal refusal takes the danger token, and it is the only state that gets a Retry
+button: offering one where it would change nothing is worse than offering none. This is section 5's
+"empty/error states give direction, not mood" where it matters most — a driver reading their own
+earnings.
 
 ---
 

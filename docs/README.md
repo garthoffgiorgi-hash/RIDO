@@ -29,6 +29,8 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Who may write a `rides` row, and what happens when a quoted price moves | `decisions/0012-rider-books-server-owns-the-write.md` |
 | Who may accept a ride, the open-pool RLS policy, why no lock/CAS is needed | `decisions/0013-driver-accepts-one-row-one-update.md` |
 | Why the app forwards the driver's JWT to `complete-ride` rather than re-orchestrating it, `started_at`/`duration_seconds` | `decisions/0014-app-calls-complete-ride.md` |
+| How a driver gets paid: the ledger, per-ride transfers, Connect onboarding | `architecture/payouts.md` |
+| **Who absorbs card processing** (RIDO does, pilot-scoped), and why payouts are per-ride | `decisions/0015-connect-payouts-per-ride.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |
@@ -60,8 +62,13 @@ docs/
 |---|---|---|---|
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride rate? | The entire financial model | Broker |
 | 2 | Prop 22 earnings floor — who owes what, and how the two-week aggregate lands? ("drivers set fares" is resolved: they don't — ADR-0009) | Driver classification, payout design | CA attorney |
-| 3 | Does RIDO absorb Stripe's ~2.9% + $0.30, or pass it to drivers? | Take-rate math on low fares | Founder |
 
-Answering one of these produces an ADR. Until then it stays here, visible. (Question 4 — Supabase
-CLI import bundling — was answered by a real spike and removed; see
+Answering one of these produces an ADR. Until then it stays here, visible.
+
+**Answered and removed:** Question 3 — who absorbs Stripe's ~2.9% + $0.30 — is resolved by
+`decisions/0015-connect-payouts-per-ride.md`: **RIDO absorbs it**, and a driver receives exactly
+the `driver_payout_cents` they were shown. That is scoped to the pilot the way ADR-0003 scopes the
+flat fee; whether it still holds at steady-state volume is a live business question, and
+`business/monetization.md` still declines to publish a processing-adjusted figure. (Question 4 —
+Supabase CLI import bundling — was answered by a real spike and removed; see
 `decisions/0005-monorepo-shaped-layout.md`.)

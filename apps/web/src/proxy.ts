@@ -66,6 +66,15 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
+/**
+ * `api/stripe` is excluded deliberately. A Stripe webhook arrives from Stripe's servers with no
+ * cookies and no session to refresh, so running the block above on it does a pointless auth round
+ * trip — and, worse, `setAll` would attach `Set-Cookie` headers to a response whose only reader is
+ * Stripe's delivery system. The endpoint authenticates by signature (`STRIPE_WEBHOOK_SECRET`),
+ * not by session; those are different trust mechanisms and the session one has no business here.
+ */
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  matcher: [
+    "/((?!api/stripe|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

@@ -3,9 +3,9 @@
 Migrations are the **only** source of truth for schema. Never change the database by hand, and
 never edit a migration that has been applied — add a new one.
 
-Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `commission_tiers`.
-Field-level detail: `docs/architecture/data-model.md`. Completion flow:
-`docs/architecture/ride-completion.md`.
+Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
+`commission_tiers`. Field-level detail: `docs/architecture/data-model.md`. Completion flow:
+`docs/architecture/ride-completion.md`. Payout flow: `docs/architecture/payouts.md`.
 
 ## Schema rules
 
@@ -17,6 +17,12 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
 - `rides.commission_rate_bps`, `rides.commission_cents`, `rides.driver_payout_cents` are
   **write-once at completion**, enforced by a trigger (a `CHECK` can't compare old vs new) —
   never backfilled, never recomputed from current tiers.
+- **`driver_payouts` is a ledger, so its rows are append-mostly and its foreign keys are
+  `on delete restrict`, not `cascade`** — a financial record blocks deleting the driver or ride it
+  points at. `amount_cents` is `> 0` (Stripe rejects a zero transfer, and a zero payout means
+  something upstream computed wrongly), and `driver_payouts_transfer_id_iff_paid` makes a `paid`
+  row carry its receipt and a non-`paid` row never claim one. A correction is a **new row** — the
+  nullable `ride_id` exists for exactly that, and for the Prop 22 top-up. (ADR-0015)
 - `commission_tiers` is configuration, not code. Changing a rate is a row change, not a deploy.
   Tiers carry `effective_from` and `active` so a change is auditable rather than destructive.
 - The driver activation gate is a **check constraint plus RLS**, not application logic:
@@ -35,12 +41,13 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
 
 **On by default, on every table. A new table without a policy is a leak, and it will ship.**
 
-- Drivers read their own `drivers`, `subscriptions`, and `driver_monthly_stats` rows, and can
-  update a narrow, explicitly column-granted subset of `drivers` (contact and vehicle info —
-  never `status` or a compliance column). `subscriptions` and `driver_monthly_stats` are
-  **read-only even to their own driver** — both are written exclusively by the service role
-  (Stripe webhooks; the rollup trigger) since a driver-writable fee state or MTD figure is a
-  direct revenue/commission-integrity hole, not a permissions nuance.
+- Drivers read their own `drivers`, `subscriptions`, `driver_monthly_stats` and `driver_payouts`
+  rows, and can update a narrow, explicitly column-granted subset of `drivers` (contact and vehicle
+  info — never `status`, a compliance column, or any of the three `stripe_*` columns, which are
+  Stripe's word about an external system). The other three tables are **read-only even to their own
+  driver** — all written exclusively by the service role (Stripe webhooks; the rollup and payout
+  triggers), since a driver-writable fee state, MTD figure, or payout status is a direct
+  revenue/commission/cash-integrity hole, not a permissions nuance.
 - Riders read only their own `rides`; drivers read only rides where they're the driver, **plus**
   (new, ADR-0013) any active driver reads every unassigned `'requested'` ride — the open pool a
   dispatch board needs. That policy is PERMISSIVE, ORing with the two ownership policies rather
@@ -119,8 +126,19 @@ Field-level detail: `docs/architecture/data-model.md`. Completion flow:
   has always accepted both statuses. Start-trip is the same conditional-`UPDATE` shape accept
   uses: `WHERE status = 'accepted' AND driver_id = ?`, no lock needed, only this ride's own driver
   can ever match the predicate. (ADR-0014)
+- **A completed ride and the debt it creates are one atomic act.** `queue_driver_payout()` fires on
+  the same `→ completed` transition `bump_monthly_stats` watches, inserting the `driver_payouts` row
+  *inside* the completion transaction — so no application bug, crash or network failure can complete
+  a ride without recording what it owes. It is a local insert with no network call, which is why it
+  is allowed inside the critical section ADR-0008 guards. It copies `driver_payout_cents` verbatim
+  and computes nothing (root invariant 5), skips a zero payout rather than writing one, and
+  `on conflict do nothing` against `driver_payouts_one_per_ride` makes a re-fired trigger a no-op.
+  **Paying is deliberately not part of this transaction** — the transfer is an app-side, retryable
+  step against the row the trigger left behind. (ADR-0015)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
-  function's row shapes stop being hand-written projections.
+  function's row shapes stop being hand-written projections. The payouts migration adds a table and
+  two columns, so it is the first since `007` that genuinely needs this;
+  `apps/web/src/lib/payouts/types.ts` is a documented stopgap until it runs.
 
 ## Tests (`supabase/tests/`, pgTAP)
 
@@ -128,13 +146,20 @@ Required, not optional — the compliance gate has to hold in the database and n
 so it is tested there and not only through the app (ADR-0007).
 
 At minimum, assert that: an unvetted driver cannot reach `status = 'active'`; a driver cannot
-read another driver's rides; a non-service-role write to a commission column is rejected; and
-`bump_monthly_stats` is atomic under concurrent completions for the same driver.
+read another driver's rides; a non-service-role write to a commission column is rejected; a
+completed ride leaves exactly one `driver_payouts` row carrying its `driver_payout_cents`, which
+no driver can write; and `bump_monthly_stats` is atomic under concurrent completions for the same
+driver.
 
 **A column added to a table with RLS inherits that table's policies** — `007_ride_addresses.sql`
 proves that for `pickup_address`/`dropoff_address` rather than assuming it. Worth repeating for
 the next column added to `rides`: the policy doesn't need changing, but the proof that it still
 covers the row does.
+
+**"A policy with no test is an assumption" applies retroactively.** `subscriptions_select_own` went
+untested from the first migration until `012_subscriptions_rls.sql`. If you touch a table whose
+policies have no test file, write one while you're there — that rule is worth nothing enforced only
+on new work.
 
 The last one has a real limit: `pg_prove`/`supabase test db` run one connection at a time, so
 pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connection locking.

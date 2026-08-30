@@ -13,13 +13,13 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — five core tables
+## Schema — six core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
-`id` · `auth_user_id` → `auth.users`, cascades · `full_name` · `email` · `phone` · `status` (`pending` | `active` | `suspended`) · `background_check_status` (`pending`|`passed`|`failed`) · `dmv_check_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_date` · `training_completed` (bool) · `vehicle_make/model/year/plate` · `stripe_account_id` (Connect) · `created_at` · `updated_at` (trigger-maintained).
+`id` · `auth_user_id` → `auth.users`, cascades · `full_name` · `email` · `phone` · `status` (`pending` | `active` | `suspended`) · `background_check_status` (`pending`|`passed`|`failed`) · `dmv_check_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_date` · `training_completed` (bool) · `vehicle_make/model/year/plate` · `stripe_account_id` (Connect Express, written by RIDO's server at onboarding) · `stripe_payouts_enabled` · `stripe_details_submitted` (both mirrored from a signature-verified `account.updated` webhook — ADR-0015) · `created_at` · `updated_at` (trigger-maintained).
 **Activation gate:** `status='active'` requires background + inspection passed — a table `CHECK` constraint, not just app logic. `dmv_check_status`/`vehicle_inspection_status` values weren't specified anywhere; inferred to mirror `background_check_status`.
-**RLS:** a driver reads and updates their own row; the update grant covers only contact/vehicle columns, never `status` or a compliance field. No `INSERT` for `authenticated` — the initial row is created by an admin/vetting process under the service role.
+**RLS:** a driver reads and updates their own row; the update grant covers only contact/vehicle columns, never `status`, a compliance field, or any of the three `stripe_*` columns — those are Stripe's word about an external system, written only by the service role. No `INSERT` for `authenticated` — the initial row is created by an admin/vetting process under the service role.
 
 ### `subscriptions`
 The flat-fee relationship (Stripe-backed). Drives pilot vs steady.
@@ -38,6 +38,13 @@ Per-driver, per-month rollup. Powers tier lookup and reporting. Maintained atomi
 `id` · `driver_id` → drivers, cascades · `year_month` (text, e.g. `2026-06`) · `rides_count` · `gross_fare_cents` · `commission_cents` · `payout_cents` · `updated_at`. Unique on (`driver_id`, `year_month`). A `CHECK` enforces `commission_cents + payout_cents = gross_fare_cents`.
 **RLS:** a driver reads only their own row. No write access at all for `authenticated` — this table is fed exclusively by the `bump_monthly_stats` trigger.
 
+### `driver_payouts`
+What RIDO owes a driver, and whether it has been sent — the ledger `driver_payout_cents` never had. Full flow: `payouts.md`; why it's shaped this way: `../decisions/0015-connect-payouts-per-ride.md`.
+`id` · `driver_id` → drivers, **restrict** (a financial record blocks deleting the driver it points at) · `ride_id` → rides, **nullable and restrict** (null is the seam for the Prop 22 two-week top-up and the adjustment rows `ride-completion.md` calls for; nothing creates one yet) · `amount_cents` (`> 0`, not `>= 0` — Stripe rejects a zero transfer and a zero payout means something computed wrongly) · `status` (`pending`|`paid`|`failed`) · `stripe_transfer_id` · `failure_reason` · `created_at` · `updated_at` (trigger-maintained).
+**Constraints:** `driver_payouts_transfer_id_iff_paid` — a `paid` row must carry its receipt and a non-`paid` row must not claim one. Two partial unique indexes: `driver_payouts_one_per_ride` (a ride is owed for at most once) and one on `stripe_transfer_id`. Together with Stripe's own idempotency key (the payout row's id) that makes a duplicate transfer impossible from two independent directions.
+**Written by trigger, not by application code:** `queue_driver_payout` fires on the same `→ completed` transition `bump_monthly_stats` watches, so the debt is recorded *inside* the completion transaction — a ride is completed and owed for atomically, or neither. A zero-payout ride is skipped rather than written.
+**RLS:** a driver reads only their own rows, and writes none — matching `driver_monthly_stats` and for the same reason: a driver who could mark unsent money `paid`, or paid money `pending`, is a cash-integrity hole.
+
 ### `commission_tiers`
 Config — the graduated rates, editable without deploy.
 `id` · `tier_order` · `lower_bound_cents` · `upper_bound_cents` (null = ∞) · `rate_bps` · `active` (bool) · `effective_from`. Unique on (`tier_order`, `effective_from`) — required for `supabase/seed/commission_tiers.sql`'s `ON CONFLICT` to be valid. Seed: (0–100000 → 2000 bps), (100000–300000 → 1200 bps), (300000–null → 800 bps).
@@ -50,15 +57,23 @@ Config — the graduated rates, editable without deploy.
 the fix for a race a naive rollup trigger alone doesn't cover, see `ride-completion.md`.
 `bump_monthly_stats()` — the rollup trigger. `set_ride_duration()` — derives `duration_seconds`
 from `started_at`/`completed_at` on the same completion transition, when both exist (ADR-0014).
-`set_updated_at()` — generic, reused wherever a table needs a maintained `updated_at`.
-`prevent_commission_rewrite()` — the write-once trigger on `rides`.
+`queue_driver_payout()` — writes the `driver_payouts` row on that same transition, so a completed
+ride and the debt it creates are one atomic act (ADR-0015). `set_updated_at()` — generic, reused
+wherever a table needs a maintained `updated_at`. `prevent_commission_rewrite()` — the write-once
+trigger on `rides`.
 
 ## Not built, in this pass or any prior one
 
 The CPUC 0.33% fee and airport surcharges (`../compliance/ca-tnc.md` calls both out as needing
-to be "first-class line items") have no schema anywhere yet. Neither does an adjustment-row
-table — `ride-completion.md`'s "a correction is a new row, not an edit" rule currently has
-nowhere to write to. Both are real future work, not decided here.
+to be "first-class line items") have no schema anywhere yet — and when they land, what a rider is
+charged stops equalling `rides.fare_cents`, which has no `rider_total_cents` column to hold the
+difference (`FareQuote` already distinguishes the two; the table does not). Real future work, not
+decided here.
+
+An adjustment-row table is **half-answered**: `driver_payouts.ride_id` is nullable precisely so a
+correction or a Prop 22 top-up has somewhere to be written without editing a settled row, which is
+what `ride-completion.md`'s "a correction is a new row, not an edit" asks for. Nothing creates one
+yet, and adjustments to the *commission* side still have no home.
 
 ## The completion flow
 
@@ -71,4 +86,4 @@ The bracketed-vs-cliff decision and why cliff was rejected: `../decisions/0002-b
 - **Currency:** integer cents everywhere. No floats.
 - **Time:** store UTC; compute `year_month` in America/Los_Angeles (SD market) — fix and document the boundary.
 - **RLS:** drivers see only their own rows; riders only theirs; service role for Edge Functions.
-- **Payouts:** Stripe Connect to drivers; flat fee via Stripe subscription (skipped/zeroed during pilot via `flat_fee_cents=0` / `fee_active=false`).
+- **Payouts:** Stripe Connect Express to drivers, one transfer per completed ride against the `driver_payouts` ledger (`payouts.md`, ADR-0015). RIDO absorbs card processing, so a driver receives exactly `driver_payout_cents`. Flat fee via Stripe subscription is still unbuilt — skipped/zeroed during the pilot via `flat_fee_cents=0` / `fee_active=false`.

@@ -4,18 +4,21 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-08-31** (branch `claude/intelligent-fermat-2xkydc`)
+**Last verified: 2026-09-01** (branch `claude/intelligent-fermat-2xkydc`)
 
 ## TL;DR
 
-**A ride can now go from a rider's tap to a driver's payout, for real, for the first time.**
-`requested → accepted → in_progress → completed` is a complete loop: a rider books at `/request`,
-a driver accepts and starts the trip at `/drive`, and completing it makes the app's first-ever
-call to the `complete-ride` Edge Function — deployed and tested since ADR-0008, never once invoked
-until now. The commission snapshot, the `driver_monthly_stats` rollup, all of it fires against a
-real row. What's missing is the rest of the **product around it**: no payments, no driver decline,
-no dispatch/proximity, no realtime — a rider or driver still only learns of a state change on
-reload.
+**The outbound half of the money loop is built.** `requested → accepted → in_progress → completed`
+runs end to end (a rider books at `/request`, a driver accepts, starts and completes at `/drive`,
+which calls the `complete-ride` Edge Function), and completion now also **records a debt and pays
+it**: a `driver_payouts` ledger row written by trigger inside the completion transaction, then a
+Stripe Connect transfer to the driver's own connected account (ADR-0015).
+
+**The inbound half does not exist.** Nothing charges a rider, so RIDO's platform balance is empty
+and a *production* transfer fails with `balance_insufficient` — the ledger holds it as `pending`
+rather than losing it, and test mode proves the whole path today. Rider charging is the next
+feature, and the one that makes production payouts succeed. Also still missing: driver decline,
+dispatch/proximity, realtime (every state change appears on reload).
 
 ## What exists (verified, not assumed)
 
@@ -29,7 +32,7 @@ reload.
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code. Verified end to end against a real Supabase project (sign-up → email → `/account`). |
 | `/account` | **Role-aware.** Shows a rider card to everyone and a driver card (compliance status included) to anyone with a `drivers` row. No `role` column — verified against real RLS that a rider-only user reads zero `drivers` rows and a dual-role user reads only their own. |
 | `/request` | **Built, rider side, full lifecycle.** Map-first, a bottom sheet with a real `quoteRideRequest()`/`requestRide()`/`cancelRide()` write path — `src/lib/rides/`, auth-gated, unlinked from anywhere. Shows "Your driver is on the way" once accepted, "You're on your way" once in progress, and a dismissable trip-complete summary once the ride finishes (`getRecentlyCompletedRide()`). Cancel only renders while `'requested'`. No realtime — every state change appears on reload. ADR-0012, ADR-0014, `architecture/ride-booking.md`. |
-| `/drive` | **Built, driver side, full lifecycle.** The compliance-status card, plus either the open-request dispatch board (`listOpenRequests()`/`acceptRide()`, `RideCard`, "you keep $X (Y%)" computed live via `commissionForRide`) or — new — the driver's own current ride (`getDriverActiveRide()`, `CurrentRidePanel`) with **Start trip** and **Complete ride**, the latter making the app's first-ever call to the deployed `complete-ride` Edge Function. `rides_one_active_per_driver` makes the two views mutually exclusive. Accept and start are both one race-proof conditional `UPDATE`, not a lock — ADR-0013, ADR-0014. No online/offline toggle, no MTD tier-progress visualization, no decline. `architecture/ride-booking.md`, `architecture/ride-completion.md`. |
+| `/drive` | **Built, driver side, full lifecycle, and now paid.** The compliance-status card, a **payout card** (`PayoutCard` — Connect onboarding CTA, or paid-to-date plus anything pending or failed with a retry), plus either the open-request dispatch board (`listOpenRequests()`/`acceptRide()`, `RideCard`, "you keep $X (Y%)" computed live via `commissionForRide`) or the driver's own current ride (`getDriverActiveRide()`, `CurrentRidePanel`) with **Start trip** and **Complete ride**, the latter calling the deployed `complete-ride` Edge Function and then chaining a best-effort `payoutRide()`. `rides_one_active_per_driver` makes the two views mutually exclusive. Accept and start are both one race-proof conditional `UPDATE`, not a lock — ADR-0013, ADR-0014, ADR-0015. No online/offline toggle, no MTD tier-progress visualization, no decline. `architecture/ride-booking.md`, `architecture/ride-completion.md`, `architecture/payouts.md`. |
 | Maps | **Built end to end.** `apps/web/src/lib/maps/` — `measureRoute()` (server-only, secret token) turns two coordinates into the integer distance and duration `quoteFare()` needs; `searchPlaces()`/`describePlaceAt()` (browser, public token) turn typed text into coordinates; `map.ts` renders a map (`mapbox-gl`, the only file importing it, dynamically loaded) via an opaque `RideMapHandle` — no vendor type crosses into `RideMap.tsx`. `/dev/maps` (auth-gated, 404s outside development) proves search → measure → quote → render against a real Mapbox account. `geocode.ts` (Geocoding v6, always `permanent=true`) is the storable-coordinate path, **built and switched off** — ADR-0011 defers permanent geocoding for the pilot. Pure request-building, response-parsing, and map geometry are tested (77 tests). ADR-0010, ADR-0011, `architecture/maps.md`. |
 | UI primitives | `src/components/ui/` — `Button`, `Card`, `Input`, `Badge`, `Avatar`, `FareChip`. Domain: `MarketingNav`, `MarketingFooter`, `Wordmark`. |
 | Marketing figures | `apps/web/src/lib/marketing/figures.ts` — every commission figure **derived** from the seeded tiers via `@rido/pricing` at build time. `mock-data.ts` keeps only illustrative copy |
@@ -37,25 +40,31 @@ reload.
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Fare quoting (`quoteFare`) and the Prop 22 floor alongside the commission math. Bracketed commission, tier validation, flat-fee resolution. 95 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project live, schema applied to it.** Eighteen migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`, the driver-accept policy + `rides_open_requests_idx` + `rides_one_active_per_driver`, and — new — `rides_started_at_present_iff_in_progress` + the `set_ride_duration` trigger), RLS on every table, ten pgTAP files (73 tests) plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The newest migration is verified locally but not yet applied to the live project.** `database.types.ts` needs no regeneration for it either — like the driver-accept migration, this one adds no column, only a constraint and a trigger. |
+| Supabase | **Project live, schema applied to it.** Nineteen migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`, the driver-accept policy + `rides_open_requests_idx` + `rides_one_active_per_driver`, `rides_started_at_present_iff_in_progress` + the `set_ride_duration` trigger, and — new — `driver_payouts` + the `queue_driver_payout` trigger + the two `drivers.stripe_*` state columns), RLS on every table, twelve pgTAP files (92 tests) plus two standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The two newest migrations are verified locally but not yet applied to the live project.** The payouts migration is the first since the ride-address one to add columns, so `database.types.ts` **does** need regenerating against it — `apps/web/src/lib/payouts/types.ts` is a documented temporary hand-written bridge that gets deleted when it is. |
 | `complete-ride` | **Built, tested, and finally called.** `supabase/functions/complete-ride/` — pure `core.ts` (authorization + rating, 19 tests under **both** Node and Deno), `db.ts` (the only SDK importer), `index.ts` (HTTP, bounded compare-and-swap retry). Deployed since ADR-0008; as of ADR-0014, `apps/web/src/lib/rides/server.ts`'s `completeRide()` is the app's first-ever call to a deployed Edge Function, forwarding the signed-in driver's own token so `authorizeCompletion` stays the real gate. |
+| Stripe / payouts | **Built, and blocked on the inbound half in production.** `apps/web/src/lib/stripe/` is the vendor boundary — `server.ts` is the only file in the repo importing `stripe` (pinned API version, per-call client), with pure tested `account-status.ts` and `errors.ts` beside it (20 tests). `apps/web/src/lib/payouts/` is the domain: Connect Express onboarding, `payoutRide()`, `retryPayout()`, and the `/drive` summary. `apps/web/src/app/api/stripe/webhook/route.ts` is the repo's first `api/` route — raw-body signature verification, `account.updated` only, excluded from the `proxy.ts` matcher. **No money math anywhere in it:** the transferred amount is a copy of the ride's snapshotted `driver_payout_cents`, so `packages/pricing` is untouched. Transfers succeed in Stripe test mode; in production they return `balance_insufficient` until rider charging exists, and the ledger holds every unpaid row as `pending` until it does. **Needs a human with test-mode keys** to prove end to end (enable Connect, onboard a test driver, fund the test balance, complete a ride, confirm a `tr_...`). ADR-0015, `architecture/payouts.md`. |
 | Fare pricing | **Built.** `quoteFare` + a per-market `fare_rate_cards` table, seeded for San Diego and calibrated to sit ~15% under a modelled UberX fare. `npm run calibrate` prints the report; `npm run check:calibration` fails in CI if the discount drifts or a driver would earn less than on an incumbent. ADR-0009. |
 | Prop 22 floor | `packages/pricing/src/earnings-floor.ts` — per-trip diagnostic plus the two-week aggregate the statute actually uses. Nothing enforces it yet; there is no payout run to enforce it in. |
 | Ride spatial-temporal data | PostGIS enabled; `rides` carries generated `pickup_geog`/`dropoff_geog` (GiST-indexed), four lifecycle timestamps, `distance_meters`, `duration_seconds`, `pickup_address`/`dropoff_address`, and partial indexes on completed rides. **ADR-0011 decides what each holds:** the timestamps are RIDO's own clock and carry no vendor restriction (the temporal half of a demand heatmap, free from the first ride); the addresses are stored and the coordinates deferred to a backfill; `distance_meters`/`duration_seconds` are the *actual* trip, never the routed estimate. `requested_at`/`accepted_at`/`started_at`/`completed_at` are all written now, through the real lifecycle; `duration_seconds` is derived by trigger on completion when `started_at` exists. `distance_meters` and the pickup/dropoff coordinates still write nothing — both need a GPS trace or permanent geocoding, neither of which exists yet. |
 
 ## What does not exist
 
-Stripe (subscriptions or Connect) · dispatch/proximity matching (every open request is visible to
-every active driver — correct at pilot volume, `pickup_geog` is null on every row regardless,
-ADR-0011) · driver decline · realtime (a rider or driver still only learns of a state change on
-reload) · driver app · online/offline toggle · MTD tier-progress visualization · the
-cancellation-fee / grace-period feature (needs driver location and ride queuing first — see
-ADR-0014's Consequences for why queuing would also mean revisiting `rides_one_active_per_driver`).
+**Rider charging** — nothing takes money *in*. No PaymentIntent, no saved card, no rider-side
+Stripe at all, so RIDO's platform balance is empty and a production transfer cannot clear. This is
+the next feature and the one that makes production payouts succeed. Also missing: **flat-fee
+subscription billing** (`subscriptions` is still a table nothing writes — deliberate, ADR-0003 puts
+the fee at $0 for the whole pilot) · refunds, reversals, and instant payouts · dispatch/proximity
+matching (every open request is visible to every active driver — correct at pilot volume,
+`pickup_geog` is null on every row regardless, ADR-0011) · driver decline · realtime (a rider or
+driver still only learns of a state change on reload) · driver app · online/offline toggle · MTD
+tier-progress visualization · the cancellation-fee / grace-period feature (needs driver location
+and ride queuing first — see ADR-0014's Consequences for why queuing would also mean revisiting
+`rides_one_active_per_driver`).
 
 `complete-ride` is **deployed** to the live project (`supabase functions deploy complete-ride
 --project-ref <ref> --use-api`) and has now been called by the app end to end, locally verified —
-the migration that lets `/drive` reach it (`in_progress`, `started_at`) is still only applied
-locally, not yet pushed. Deploying the function originally surfaced a real gap: `functions deploy`
+the two migrations that let `/drive` reach it and get paid for it (`in_progress`/`started_at`, then
+`driver_payouts`) are still only applied locally, not yet pushed. Deploying the function originally surfaced a real gap: `functions deploy`
 needs a `[functions.complete-ride]` entry in `supabase/config.toml` to resolve `@rido/pricing`,
 which `deno check`/`deno test` don't need because CI passes `--config` explicitly. Fixed and
 documented in `supabase/CLAUDE.md` and ADR-0005 so the next function doesn't rediscover it.
@@ -130,7 +139,17 @@ quote.
 `commissionForRide`. Verified by repricing the seed and watching every page figure move, including
 the CSS bar widths. CI fails if the generated file drifts from the seed. The two hardcoded tier
 sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../brand/` are gone.
-⬜ Stripe.
+🟨 **Stripe — the outbound half only.** ✅ Connect Express onboarding, the `driver_payouts` ledger
+written by trigger inside the completion transaction, one transfer per completed ride keyed on the
+payout row's id, a signature-verified `account.updated` webhook, and `/drive`'s payout card
+(**ADR-0015**). The design's load-bearing property is that it adds *no money math*: the amount
+transferred is a copy of the ride's write-once `driver_payout_cents`, so the one thing that could
+corrupt the accounting record — a second opinion about what a driver is owed — does not exist in
+the payout path. ADR-0015 also **answers the first of the three open questions**: RIDO absorbs card
+processing, so a driver receives exactly the figure shown before they accepted.
+⬜ **Rider charging** — the inbound half. Until it lands, production transfers return
+`balance_insufficient` and the ledger holds them `pending`; test mode proves the whole path today.
+⬜ Flat-fee subscription billing — not blocked, just not yet due (ADR-0003: $0 all pilot).
 ✅ **`gradComm()` is retired.** `tools/pilot-model` is a real workspace (`npm run model`) that
 calls `@rido/pricing` instead of re-implementing bracketed commission in floating-point dollars.
 The flat fee now turns on at a driver-count threshold — the traction signal ADR-0003 describes —
@@ -149,9 +168,12 @@ trip-complete summary once finished. ✅ **Driver accept** — `/drive` lists th
 "you keep $X (Y%)" per request and a race-proof one-row `UPDATE` to take one (ADR-0013), closing
 `matched` in the rider blueprint. ✅ **Ride completion** — `/drive`'s `CurrentRidePanel` carries a
 driver's own ride through `'in_progress'` to `'completed'`, making the app's first-ever call to
-`complete-ride` (ADR-0014), closing `en route`/`in trip` in the rider blueprint. ⬜ Dispatch/proximity
+`complete-ride` (ADR-0014), closing `en route`/`in trip` in the rider blueprint. ✅ **Driver
+payouts** — `/drive`'s `PayoutCard` links a bank through Stripe-hosted Express onboarding and shows
+what the ledger says is paid, pending, or failed (ADR-0015). ⬜ Dispatch/proximity
 matching, driver decline. ⬜ Rest of the driver view (online/offline toggle, MTD tier-progress
-visualization). ⬜ `rate`, the blueprint's last state.
+visualization). ⬜ `rate`, the blueprint's last state. ⬜ The rider's payment surface — nothing on
+`/request` collects a card, which is the same gap Phase 2's inbound half names.
 
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
 inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —
@@ -173,7 +195,10 @@ first-class line items — no schema exists for either.
 |---|---|---|
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride? | Broker |
 | 2 | Prop 22 earnings floor × "drivers set fares" | CA attorney |
-| 3 | Does RIDO absorb Stripe's ~2.9% + $0.30, or pass it to drivers? | Founder |
+
+Question 3 — who absorbs Stripe's ~2.9% + $0.30 — is **answered**: RIDO does, so a driver receives
+exactly the `driver_payout_cents` they were shown (ADR-0015). Pilot-scoped the way ADR-0003 scopes
+the flat fee; whether it survives at steady-state volume is a live business question, not a blocker.
 
 ## Working conventions
 

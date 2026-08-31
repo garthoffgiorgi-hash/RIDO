@@ -4,9 +4,11 @@ import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
+import { getPayoutSummary, refreshConnectState } from "@/lib/payouts/server";
 import { getDriverActiveRide, listOpenRequests } from "@/lib/rides/server";
 import { CurrentRidePanel } from "./CurrentRidePanel";
 import { OpenRequestsPanel } from "./OpenRequestsPanel";
+import { PayoutCard } from "./PayoutCard";
 
 /**
  * Driver dashboard. The compliance-status card is the original scaffolding, mirroring
@@ -14,23 +16,40 @@ import { OpenRequestsPanel } from "./OpenRequestsPanel";
  * read) works end to end. Below it: the driver's own live ride if they have one
  * (`CurrentRidePanel`, ADR-0014), or the open-request dispatch board if they don't
  * (`OpenRequestsPanel`, ADR-0013) — `rides_one_active_per_driver` guarantees these are mutually
- * exclusive, so `listOpenRequests` doesn't even run when a current ride exists. Online/offline
- * toggle and MTD tier-progress visualization are still roadmap Phase 3 — availability means
- * little while drivers pull from a list rather than dispatch pushing to them.
+ * exclusive, so `listOpenRequests` doesn't even run when a current ride exists — and the payout
+ * card (`PayoutCard`, ADR-0015), which is where a driver connects a bank and sees what they've
+ * been paid. Online/offline toggle and MTD tier-progress visualization are still roadmap Phase 3.
  *
  * Reachable by anyone signed in, driver or not: someone without a `drivers` row sees an honest
  * "you haven't applied" state rather than being redirected away, since there's no self-serve
  * apply flow to send them to yet — `/drivers`' own CTA still goes through the same `/signup`
  * every rider uses.
  */
-export default async function DrivePage() {
+export default async function DrivePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ onboarding?: string }>;
+}) {
   const user = await requireUser();
   const driver = await getOwnDriverProfile(user);
   const active = isActiveDriver(driver);
 
+  // Stripe redirects here with ?onboarding=return once the driver finishes its hosted form. The
+  // account.updated webhook and this redirect race, and either can arrive first — so re-read
+  // Stripe directly on the return leg rather than rendering a stale `false` at the exact moment
+  // the driver is looking for confirmation that it worked.
+  const { onboarding } = await searchParams;
+  if (onboarding === "return" && driver) {
+    await refreshConnectState(driver);
+  }
+
+  // Re-read after any refresh above, so the card renders the state we just synced.
+  const freshDriver = onboarding === "return" ? await getOwnDriverProfile(user) : driver;
+
   const currentRide = active && driver ? await getDriverActiveRide(driver) : null;
   const hasNoActiveRide = currentRide?.ok && currentRide.data === null;
   const openRequests = hasNoActiveRide && driver ? await listOpenRequests(driver) : null;
+  const payouts = active && freshDriver ? await getPayoutSummary(freshDriver) : null;
 
   return (
     <main className="flex min-h-screen items-center bg-ivory p-6">
@@ -84,6 +103,13 @@ export default async function DrivePage() {
             <OpenRequestsPanel initialRequests={openRequests.data} />
           ) : (
             <p className="text-[13px] text-danger">{openRequests.message}</p>
+          ))}
+
+        {payouts &&
+          (payouts.ok ? (
+            <PayoutCard summary={payouts.data} />
+          ) : (
+            <p className="text-[13px] text-danger">{payouts.message}</p>
           ))}
       </div>
     </main>

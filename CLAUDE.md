@@ -11,13 +11,20 @@ Supabase project, sign-up and sign-in by email or phone, session refresh, route 
 **database** (schema applied, RLS and constraints tested against a real Postgres), **all money
 math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor — the
 **`complete-ride` Edge Function** that joins them, **Mapbox** (measuring, searching, and rendering
-a route, proven end to end at `/dev/maps` against a real account), and the **rider/driver booking
-lifecycle**: a rider requests a real ride at `/request` (quote, book, cancel) and a driver accepts
-one at `/drive` (the open pool, priced live with what they'd keep) — `requested → accepted` is a
-real, race-proof write, so `complete-ride` finally has a real row it can finish.
+a route, proven end to end at `/dev/maps` against a real account), the **full ride lifecycle**
+(`requested → accepted → in_progress → completed`: a rider books at `/request`, a driver accepts,
+starts and completes at `/drive`, which calls `complete-ride` and gets a real commission snapshot —
+ADR-0012, ADR-0013, ADR-0014), and **driver payouts** (a `driver_payouts` ledger written by trigger
+inside the completion transaction, then a Stripe Connect transfer to the driver's own connected
+account — ADR-0015).
 
-**Not built:** payments (Stripe), the native driver app, dispatch/proximity matching, and anything
-realtime (a rider learns of an accept, and a driver of a lost race, only on reload).
+**Not built — and this is the one that matters:** **nothing charges a rider.** There is no
+PaymentIntent, no saved card, no rider-side Stripe at all, so RIDO's platform balance is empty and
+a *production* transfer returns `balance_insufficient`. The ledger holds it as `pending` rather
+than losing it, and Stripe test mode proves the whole path today, but the loop is a half-loop until
+the inbound side ships. Also not built: flat-fee subscription billing (deliberate — ADR-0003 puts
+the fee at $0 for the whole pilot), the native driver app, dispatch/proximity matching, and
+anything realtime (every state change appears on reload).
 
 **Partially built:**
 
@@ -26,9 +33,9 @@ realtime (a rider learns of an accept, and a driver of a lost race, only on relo
   person can hold both). Post-login redirect still always lands on `/account` — both `/request`
   and `/drive` have real functionality now, but landing a rider straight into a live map, or a
   driver straight into a dispatch board, on every sign-in isn't obviously right either.
-- **Driver accept.** Built: the open pool, the live "you keep $X (Y%)" figure, the race-proof
-  accept write (ADR-0013). Not built: online/offline availability, MTD tier-progress, decline, the
-  `accepted → in_progress` transition.
+- **The driver view.** Built: the open pool, the live "you keep $X (Y%)" figure, race-proof accept
+  and start writes, complete, and the payout card. Not built: online/offline availability, MTD
+  tier-progress, decline.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.
@@ -68,7 +75,9 @@ a new file is written, and the root CLAUDE.md is the only project memory that su
    Never a variable holding dollars. Rates are basis points (`2000` = 20%).
 2. **Snapshot commission onto the `rides` row at completion** — `commission_rate_bps`,
    `commission_cents`, `driver_payout_cents`. **Never recompute a historical ride from current
-   tiers.** Recalculation destroys reconcilability and makes revenue unpredictable.
+   tiers.** Recalculation destroys reconcilability and makes revenue unpredictable. The payout
+   path inherits this: a driver is transferred exactly `driver_payout_cents`, copied — never
+   recomputed, never netted for processing fees, which RIDO absorbs. (ADR-0015)
 3. **Commission is bracketed (marginal), read from the `commission_tiers` table** — never
    hardcoded. Defaults: 20% / 12% / 8% across monthly per-driver fare bands $0–1,000 /
    $1,000–3,000 / >$3,000. Each band's rate applies only to fares inside it. (ADR-0002)
@@ -121,6 +130,11 @@ a new file is written, and the root CLAUDE.md is the only project memory that su
 - Price a ride from a distance or duration a client sent you. The server measures the trip;
   `measureRoute()` is the only source of those two numbers. (ADR-0010)
 - Ship a change to money math, a compliance rule, or pure `lib/` logic without its test.
+- Deduct anything from a driver's payout, or compute the payout amount from anything but the
+  ride's snapshotted `driver_payout_cents`. Nothing in `src/lib/payouts/` does arithmetic on
+  money, and nothing new should. (ADR-0015)
+- Parse a Stripe webhook body before verifying its signature. The route reads `request.text()`;
+  a body that has been through `.json()` can no longer be verified.
 - Read `brand/exports/*.dc.html` into context — they're bundled artifacts, ~95% base64 fonts.
   Read the sibling `.md` handoff note instead.
 - Introduce a colour, font, or radius that isn't in `brand/design-system.md`.

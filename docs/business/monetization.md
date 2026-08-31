@@ -30,9 +30,11 @@ them, `apps/web/src/lib/marketing/figures.test.ts` fails first — update both t
 - **Basis: commission-only, no flat fee.** Matches the pilot state today (ADR-0003: fee is $0
   during the pilot) — so this is also the *launch-accurate* number, not an aspirational one.
 - **Don't publish a figure net of the flat fee or net of card processing.** The fee-adjusted
-  number depends on a volume assumption that keeps moving with GMV; the processing-adjusted
-  number depends on Open Question #3 in `docs/README.md` (who absorbs Stripe's cut) — unresolved.
-  Publishing either now means republishing the moment either question resolves.
+  number depends on a volume assumption that keeps moving with GMV. Processing is now decided —
+  RIDO absorbs it (ADR-0015), so a driver's published keep-rate is *unaffected* by it and the
+  figures above stand as-is — but it is a **cost line**, not a deduction, and netting it out of a
+  driver-facing percentage would misdescribe what a driver receives. Publishing a fee-adjusted
+  figure still means republishing the moment that question resolves.
 - **The true per-fare range is 80%–92%**, tier-implied. 86% is the *blended monthly* figure at
   the example volume above — a single ride's keep-rate depends on the driver's month-to-date
   position, not one fixed number. Don't present 86% as a per-ride guarantee.
@@ -58,4 +60,4 @@ The $1M commercial liability RIDO must carry (CA CPUC requirement, RIDO's obliga
 ## Unit-economics intuition (for sanity checks)
 - Driver take-home advantage over incumbents is real but shrinks as the flat fee bites at low volume and grows as Tier-3 (8%) kicks in at high volume.
 - RIDO revenue per driver ≈ flat fee + blended commission. At ~$2,000–3,600 GMV/driver-mo, that's roughly $400–490/driver/mo (~12–18% blended take) vs an incumbent's ~30%.
-- Card processing (Stripe ~2.9% + $0.30/txn) is a real drag on low ($18) fares — decide whether RIDO absorbs it or passes it to drivers (Empower passes it).
+- Card processing (Stripe ~2.9% + $0.30/txn) is a real drag on low ($18) fares. **RIDO absorbs it** (ADR-0015) — Empower passes it, and the divergence is deliberate: a driver receives exactly the `driver_payout_cents` they were shown before accepting, so the keep-rate promise stays literally true. It is a RIDO cost line, which is how `../../tools/pilot-model/src/model.ts` already models it with `passProcessingToDrivers` false. Pilot-scoped, the way ADR-0003 scopes the flat fee: whether it survives at steady-state volume is a live question, and the model's toggle stays there to explore it.

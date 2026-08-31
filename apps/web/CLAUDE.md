@@ -33,7 +33,7 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, `RideCard`, `RideMap`, `PlaceSearch`, later `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary** (ADR-0006, root invariant 7) — one module per domain, each owning its own `result.ts` and its own error translation. The ones that exist today: |
 | `src/lib/stripe/` | Stripe. `server.ts` is **the only file importing `stripe`** (`server-only`, pinned API version, client built per call so unrelated routes still build without a key); `account-status.ts` (Connect state machine) and `errors.ts` (vendor error → RIDO voice + retryability) are pure and tested. Knows Stripe, not what RIDO owes |
-| `src/lib/payouts/` | What RIDO owes: `getPayoutSummary`, `startConnectOnboarding`, `refreshConnectState`, `payoutRide`, `retryPayout` — service-role reads and writes against the `driver_payouts` ledger. Same vendor/domain split as `maps/` vs `fares/`. See **Payouts** below |
+| `src/lib/payouts/` | What RIDO owes: `getPayoutSummary`, `startConnectOnboarding`, `refreshConnectState`, `settlePendingPayoutsForDriver`, `payoutRide`, `retryPayout` — service-role reads and writes against the `driver_payouts` ledger. Same vendor/domain split as `maps/` vs `fares/`. See **Payouts** below |
 | `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthToDateCents(driverId)` — and hands both to `commissionForRide()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. What powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet |
@@ -118,20 +118,23 @@ exists — so `payoutRide()` is best-effort by design, and a payout failure must
 completed ride into a failed one. ADR-0015, `docs/architecture/payouts.md`.
 
 - **Nothing in `src/lib/payouts/` does arithmetic on money.** The amount transferred is read off the
-  ledger row, which the trigger copied from the ride's write-once `driver_payout_cents`; RIDO
-  absorbs card processing, so nothing is netted out either. `@rido/pricing` isn't imported here at
-  all — importing it would be the bug.
+  ledger row, copied by the trigger from the ride's write-once `driver_payout_cents`; RIDO absorbs
+  card processing, so nothing is netted out. `@rido/pricing` isn't imported here — that would be the bug.
+- **A `pending` row is revisited exactly once, on return from onboarding.** `payoutRide()` only
+  fires right after the ride that created it, and `/drive` gives `pending` no Retry button
+  (only a terminal refusal earns one) — `settlePendingPayoutsForDriver()` pulls it forward instead,
+  called from `(driver)/drive/page.tsx` right after `refreshConnectState()`.
 - **`src/lib/stripe/server.ts` is the only file importing `stripe`** — rule 7, same as `map.ts` for
   `mapbox-gl`. It returns app-shaped results (`StripeResult`, `TransferOutcome`), so retryability
   comes from the *original* Stripe error, never from re-reading a message we already translated.
 - **The webhook route reads the raw body.** `src/app/api/stripe/webhook/route.ts` calls
-  `await request.text()` — a body through `.json()` can no longer be signature-verified. It handles
-  `account.updated` only, which writes state rather than deltas and so is idempotent by nature;
-  that is why there's no processed-event table. The first non-idempotent handler needs one.
+  `await request.text()` — a parsed body can no longer be signature-verified. It handles
+  `account.updated` only, idempotent by nature since it writes state, not deltas — the first
+  non-idempotent handler needs a processed-event table this one doesn't.
 - **Connect state is Stripe's word, not the driver's.** `stripe_account_id`,
   `stripe_payouts_enabled` and `stripe_details_submitted` sit outside the `authenticated` column
-  `UPDATE` grant, written only through the service role. Onboarding links are single-use and
-  short-lived — create one per attempt, never cache one.
+  `UPDATE` grant, written only by the service role. Onboarding links are single-use and short-lived
+  — create one per attempt, never cache one.
 - `src/lib/payouts/types.ts` is a **temporary** hand-written bridge; delete it the moment
   `npm run types:generate` runs against the pushed migration.
 
@@ -144,11 +147,9 @@ importing it from a client component is a build error. A client-supplied distanc
 never an input to a price; a client-supplied *coordinate pair* is fine. Place search (`browser.ts`)
 runs client-side on the public token, because search isn't money.
 
-- **Two tokens, never one.** `NEXT_PUBLIC_MAPBOX_TOKEN` is `pk.`; `MAPBOX_SECRET_TOKEN` is `sk.`
-  and never `NEXT_PUBLIC_`. Mapbox restricts by `Referer`, and a server fetch sends none.
+- **Two tokens, never one:** `NEXT_PUBLIC_MAPBOX_TOKEN` (`pk.`) and `MAPBOX_SECRET_TOKEN` (`sk.`, never `NEXT_PUBLIC_`) — Mapbox restricts by `Referer`, a server fetch sends none.
 - **Never trust `response.ok`, never round at a call site.** Mapbox reports routing failures with
-  HTTP 200 (`code: "NoRoute"`) and returns floats that `quoteFare` throws on. `parseDirectionsBody`
-  handles both, once, tested.
+  HTTP 200 (`code: "NoRoute"`) and returns floats `quoteFare` throws on; `parseDirectionsBody` handles both, once, tested.
 - `map.ts` is **the only file importing `mapbox-gl`** (rule 7) and returns an opaque
   `RideMapHandle`, never a Mapbox `Map`, so no caller can depend on a vendor detail. Its
   `--color-midnight` read off `:root` is the one documented exception to "never a hex in a
@@ -157,9 +158,8 @@ runs client-side on the public token, because search isn't money.
   (`geocode.ts`, Geocoding v6, `permanent=true`, via `resolveStorableCoordinates()`) is built and
   **switched off**: the pilot stores addresses and defers coordinates to a backfill.
 - `rides.distance_meters`/`duration_seconds` are the **actual** trip, never the routed estimate;
-  fare is never recomputed from either. `duration_seconds` is trigger-derived from
-  `completed_at − started_at` (null if `started_at` never was); `distance_meters` needs a GPS
-  trace. (ADR-0011, ADR-0014)
+  fare is never recomputed from either. `duration_seconds` is trigger-derived from `completed_at −
+  started_at`; `distance_meters` needs a GPS trace. (ADR-0011, ADR-0014)
 - Which products and why, rate limits, token setup, `/dev/maps`: `docs/architecture/maps.md`.
 
 ## Rules

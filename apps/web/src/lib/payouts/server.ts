@@ -360,6 +360,36 @@ export async function payoutRide(rideId: string): Promise<PayoutsResult<SettleOu
   return settle(payout);
 }
 
+/**
+ * Settles everything currently owed to a driver, best-effort.
+ *
+ * Called once, on the onboarding-return leg (`(driver)/drive/page.tsx`), the moment a driver's
+ * Connect status is freshly known. A ride completed *before* onboarding finished leaves its
+ * `driver_payouts` row `pending` by design — see `settle`'s docstring — and nothing else ever
+ * revisits it: `payoutRide` only fires once, right after the ride that created the row. Nor does
+ * `/drive` offer a button for it: `brand/design-system.md` is explicit that a `pending` row never
+ * gets Retry's styling, since it isn't an error. So the payout has to be pulled forward here
+ * instead of waited on indefinitely.
+ *
+ * One row failing (Stripe down, say) must not stop the rest — each reuses `settle`'s own
+ * retryable/failed classification, so a genuine failure still lands as `failed`, visible on
+ * `/drive`, exactly as if `retryPayout` had been clicked on it directly.
+ */
+export async function settlePendingPayoutsForDriver(driver: DriverProfile): Promise<void> {
+  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const { data, error } = await service
+    .from("driver_payouts")
+    .select(PAYOUT_COLUMNS)
+    .eq("driver_id", driver.id)
+    .eq("status", "pending");
+
+  if (error || !data) return;
+
+  for (const row of data as DriverPayoutRow[]) {
+    await settle(row);
+  }
+}
+
 /** Retries one unsettled payout — the affordance behind `/drive`'s pending/failed list. */
 export async function retryPayout(payoutId: string): Promise<PayoutsResult<SettleOutcome>> {
   const user = await requireUser();

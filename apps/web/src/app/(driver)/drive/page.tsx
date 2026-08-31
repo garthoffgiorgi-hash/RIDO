@@ -4,7 +4,11 @@ import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
-import { getPayoutSummary, refreshConnectState } from "@/lib/payouts/server";
+import {
+  getPayoutSummary,
+  refreshConnectState,
+  settlePendingPayoutsForDriver,
+} from "@/lib/payouts/server";
 import { getDriverActiveRide, listOpenRequests } from "@/lib/rides/server";
 import { CurrentRidePanel } from "./CurrentRidePanel";
 import { OpenRequestsPanel } from "./OpenRequestsPanel";
@@ -37,10 +41,13 @@ export default async function DrivePage({
   // Stripe redirects here with ?onboarding=return once the driver finishes its hosted form. The
   // account.updated webhook and this redirect race, and either can arrive first — so re-read
   // Stripe directly on the return leg rather than rendering a stale `false` at the exact moment
-  // the driver is looking for confirmation that it worked.
+  // the driver is looking for confirmation that it worked. Any ride completed before onboarding
+  // finished left its payout `pending` with nothing to revisit it later — this is the one moment
+  // that debt can be pulled forward rather than left waiting on the driver's next ride.
   const { onboarding } = await searchParams;
   if (onboarding === "return" && driver) {
     await refreshConnectState(driver);
+    await settlePendingPayoutsForDriver(driver);
   }
 
   // Re-read after any refresh above, so the card renders the state we just synced.

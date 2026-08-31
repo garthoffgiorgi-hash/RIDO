@@ -1,6 +1,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
 import * as rides from "@/lib/rides/server";
 
@@ -20,23 +21,38 @@ export async function startTrip(rideId: string) {
 }
 
 /**
- * Completes the ride, then tries to pay the driver — in that order, and with the payout attempt
- * unable to affect the outcome the caller sees.
+ * Completes the ride, takes the rider's money, then pays the driver — in that order, with neither
+ * money step able to affect the outcome the caller sees.
  *
- * **A payout failure must never turn a completed ride into a failed one.** The ride is finished
- * either way, the commission snapshot is written either way, and the money is owed either way —
+ * **Capture before payout, deliberately (ADR-0017).** The capture is what puts real funds in
+ * RIDO's platform balance, and the transfer draws on that balance. Running them the other way
+ * round is precisely the `balance_insufficient` that ADR-0015 documented as the expected
+ * production failure and that rider charging exists to end — the payout would ask for money that
+ * the capture had not yet brought in.
+ *
+ * **Neither failure may turn a completed ride into a failed one.** The ride is finished either
+ * way, the commission snapshot is written either way, and the driver is owed either way —
  * `queue_driver_payout` recorded that inside the completion transaction before this code ran. So
- * the transfer is best-effort here and the ledger is what remembers; a driver whose Stripe
- * onboarding isn't finished simply accrues `pending` rows until it is.
+ * both are best-effort and the two ledgers are what remember: an uncaptured charge stays
+ * `authorized` and retryable, an unsent payout stays `pending`.
  */
 export async function completeRide(rideId: string) {
   const outcome = await rides.completeRide(rideId);
   if (outcome.kind !== "completed") return outcome;
 
   try {
+    await payments.captureRideCharge(rideId);
+  } catch (cause) {
+    console.error("payments: captureRideCharge threw after a successful completion", {
+      rideId,
+      cause,
+    });
+  }
+
+  try {
     await payouts.payoutRide(rideId);
   } catch (cause) {
-    // Swallowed deliberately — see above. Logged because a payout path that throws (rather than
+    // Swallowed deliberately — see above. Logged because a money path that throws (rather than
     // returning a failure) is a bug worth seeing, even though it must not surface here.
     console.error("payouts: payoutRide threw after a successful completion", { rideId, cause });
   }

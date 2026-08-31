@@ -18,13 +18,20 @@ export function isActiveStatus(status: RideStatus): boolean {
 }
 
 /**
- * Whether a RIDER may cancel a ride in this status.
+ * Whether a RIDER may cancel a ride in this status **for free**.
  *
- * Only `'requested'`: this PR builds no driver-side accept, so nothing here ever produces
- * `'accepted'` or `'in_progress'` yet — drawing the line anywhere past `'requested'` would be
- * designing for a state nothing can reach. Once accept exists, whether a rider can still cancel
- * after a driver has committed is a real product decision (a fee? a driver notification?) that
- * belongs with that PR, not assumed here.
+ * The question this once asked — "may they cancel at all" — has been answered more fully by
+ * `cancellationOutcome()` in `./cancellation.ts` (ADR-0018): a rider may now also cancel an
+ * `'accepted'` or `'in_progress'` ride, for a fee, which is the product decision this function's
+ * previous docstring deferred to "that PR".
+ *
+ * It survives because "is this cancel free" is still a real and separate question, and because it
+ * is the one a component can answer without a rate card: `/request` renders its Cancel button
+ * unconditionally now, but the *confirmation* it shows depends on whether money is involved.
+ *
+ * **Server-side authority lives in `cancellationOutcome()`, not here.** This is a display rule; a
+ * fee is decided against the grace window and the ride's `accepted_at`, both of which this
+ * signature deliberately does not take.
  */
 export function canRiderCancel(status: RideStatus): boolean {
   return status === "requested";

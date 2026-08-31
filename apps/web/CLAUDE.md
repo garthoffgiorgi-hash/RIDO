@@ -33,7 +33,8 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 | `src/components/domain/` | RIDO-specific: `MarketingNav`, `Wordmark`, `RideCard`, `RideMap`, `PlaceSearch`, later `TierProgress` |
 | `src/lib/<domain>/` | **The vendor boundary** (ADR-0006, root invariant 7) — one module per domain, each owning its own `result.ts` and its own error translation. The ones that exist today: |
 | `src/lib/stripe/` | Stripe. `server.ts` is **the only file importing `stripe`** (`server-only`, pinned API version, client built per call so unrelated routes still build without a key); `account-status.ts` (Connect state machine) and `errors.ts` (vendor error → RIDO voice + retryability) are pure and tested. Knows Stripe, not what RIDO owes |
-| `src/lib/payouts/` | What RIDO owes: `getPayoutSummary`, `startConnectOnboarding`, `refreshConnectState`, `settlePendingPayoutsForDriver`, `payoutRide`, `retryPayout` — service-role reads and writes against the `driver_payouts` ledger. Same vendor/domain split as `maps/` vs `fares/`. See **Payouts** below |
+| `src/lib/payouts/` | What RIDO owes a driver: `getPayoutSummary`, `startConnectOnboarding`, `refreshConnectState`, `settlePendingPayoutsForDriver`, `payoutRide`, `retryPayout` — service-role writes against the `driver_payouts` ledger |
+| `src/lib/payments/` | What a rider owes RIDO: `getPaymentProfile`, `startCardSetup`, `recordCardFromSetup`, `authorizeRideCharge`, `captureRideCharge`, `chargeCancellationFee`, `voidRideCharge` against the `ride_charges` ledger; `browser.ts` mounts Stripe Elements. See **Money in and out** |
 | `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthToDateCents(driverId)` — and hands both to `commissionForRide()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. What powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet |
@@ -43,21 +44,17 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't |
 | `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
 
-`src/proxy.ts` refreshes the Supabase session cookie on every request and bounces anonymous
-visitors off `PROTECTED_PREFIXES` as a real 307. Named `proxy.ts` / `proxy()`, not
-`middleware.ts` / `middleware()` — Next.js 16 deprecated the old name. It runs on nearly every
-route, so **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s** — by design; a
-missing Supabase config fails loud, not silently. Its matcher **excludes `api/stripe`**: a webhook
-arrives with no cookies and must not have a session refresh attempted on it.
+`src/proxy.ts` refreshes the session cookie and bounces anonymous visitors off `PROTECTED_PREFIXES`
+as a real 307. Named `proxy.ts` / `proxy()` — Next.js 16 deprecated `middleware`. It runs on nearly
+every route, so **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**, by design.
+Its matcher **excludes `api/stripe`**: a webhook has no cookies and no session to refresh.
 
 `error.tsx` · `global-error.tsx` · `not-found.tsx` · `loading.tsx` sit at the app root. `loading.tsx`
-puts every route behind a Suspense boundary, which turns a page-level `redirect()` into a streamed
-200 plus a client navigation — that's why the auth gate is *also* in `proxy.ts`. **`requireUser()`
-in the page remains the security boundary**; the proxy list only buys a clean HTTP status, so
-forgetting an entry there fails safe.
+puts every route behind Suspense, turning a page-level `redirect()` into a streamed 200 plus a
+client navigation — which is why the auth gate is *also* in `proxy.ts`. **`requireUser()` in the
+page remains the security boundary**; the proxy list only buys a clean status, so a miss fails safe.
 
-**There is no `src/lib/pricing/`.** Money math is `packages/pricing`, imported as `@rido/pricing` —
-reaching for arithmetic on a fare or a payout here means you're in the wrong file.
+**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug.
 
 ## Auth
 
@@ -70,12 +67,10 @@ sign-out), `errors.ts` (vendor error → RIDO voice), `result.ts` (`AuthResult`)
   it), `/auth/signout` (POST only, so an `<img>` tag can't log people out), `/account`.
 - Both surfaces take email **or** phone. Phone is passwordless — the SMS code is the credential, so
   there is deliberately no phone+password combination; numbers normalise to E.164 via
-  `src/lib/phone.ts` (a bare 10-digit number is assumed US). A phone-only account has **no**
-  `email`, so anything rendering an identity handles both.
+  `src/lib/phone.ts`. A phone-only account has **no** `email`, so anything rendering identity handles both.
 - **Dashboard configuration is required and fails silently without it** — email templates,
   redirect allowlist, custom SMTP, SMS provider. See `docs/architecture/auth-setup.md`.
-- `.env.local` (gitignored) holds every secret — Supabase, `MAPBOX_SECRET_TOKEN`,
-  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`; copy `.env.example`. Never create or edit it
+- `.env.local` (gitignored) holds every key — copy `.env.example`. Never create or edit it
   through GitHub's web UI — that path ignores `.gitignore` and commits the secret.
 
 ## Rider/driver
@@ -86,11 +81,11 @@ for the signed-in `auth_user_id` — check it with `getOwnDriverProfile()` from
 (there's no self-serve "become a driver" flow — the only route in is admin/vetting under the service
 role), so a page shows or hides content per identity; it never forces a choice between them.
 
-`/account` is the one post-login landing page for everyone — deferred deliberately: both
-`/request` and `/drive` are real now, but dropping someone straight into a live map or a dispatch
-board on every sign-in isn't obviously right either. It's role-aware in its *content* (a rider card
-always, a driver card if `getOwnDriverProfile()` returns non-null), not in *where login sends you*.
-Both are auth-gated the same way: `requireUser()` in the page is the boundary, `proxy.ts`'s
+`/account` is the one post-login landing page for everyone — deferred deliberately: both `/request`
+and `/drive` are real now, but dropping someone straight into a live map or a dispatch board on
+every sign-in isn't obviously right either. It's role-aware in its *content* (rider card and payment
+card always, driver card if `getOwnDriverProfile()` returns non-null), not in *where login sends
+you*. Both are auth-gated the same way: `requireUser()` in the page is the boundary, `proxy.ts`'s
 `PROTECTED_PREFIXES` is the clean-redirect convenience.
 
 **Every `rides` write goes through `src/lib/rides/`, never an RLS write policy** — `authenticated`
@@ -105,38 +100,43 @@ every unassigned ride, because a *nullable* `driver_id` in `IN (subquery)` is SQ
 `FALSE`. `acceptRide()` and `startTrip()` pre-flight-check with pure `canAcceptRide()`/
 `canStartTrip()`, then write one conditional `UPDATE … WHERE status = …` — no lock, no CAS: they
 touch one row, so Postgres's row-level locking is the whole mechanism. `completeRide()` instead
-calls the deployed `complete-ride` Edge Function, **forwarding the driver's own access token**,
-never the service-role key, which would make `authorizeCompletion` skip its checks entirely
-(invariant 6). `getDriverActiveRide(driver)` is the read `/drive` needs to survive a reload.
+calls the deployed `complete-ride` Edge Function, **forwarding the driver's own access token**, not
+the service-role key, which would make `authorizeCompletion` skip its checks (invariant 6).
 ADR-0013, ADR-0014, `ride-booking.md`, `ride-completion.md`.
 
-## Payouts
+## Money in and out
 
-**Completing a ride records a debt; paying it is a separate, retryable step.** The `driver_payouts`
-row is written by a trigger inside the completion transaction — no code here decides whether it
-exists — so `payoutRide()` is best-effort by design, and a payout failure must never turn a
-completed ride into a failed one. ADR-0015, `docs/architecture/payouts.md`.
+**Completing a ride records a debt; moving money is a separate, retryable step.** The
+`driver_payouts` row is written by a trigger inside the completion transaction — no code here
+decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both best-effort, and
+**neither may turn a completed ride into a failed one.** ADR-0015, ADR-0017,
+`docs/architecture/payouts.md`, `docs/architecture/rider-charging.md`.
 
-- **Nothing in `src/lib/payouts/` does arithmetic on money.** The amount transferred is read off the
-  ledger row, copied by the trigger from the ride's write-once `driver_payout_cents`; RIDO absorbs
-  card processing, so nothing is netted out. `@rido/pricing` isn't imported here — that would be the bug.
-- **A `pending` row is revisited exactly once, on return from onboarding.** `payoutRide()` only
-  fires right after the ride that created it, and `/drive` gives `pending` no Retry button
-  (only a terminal refusal earns one) — `settlePendingPayoutsForDriver()` pulls it forward instead,
-  called from `(driver)/drive/page.tsx` right after `refreshConnectState()`.
-- **`src/lib/stripe/server.ts` is the only file importing `stripe`** — rule 7, same as `map.ts` for
-  `mapbox-gl`. It returns app-shaped results (`StripeResult`, `TransferOutcome`), so retryability
-  comes from the *original* Stripe error, never from re-reading a message we already translated.
-- **The webhook route reads the raw body.** `src/app/api/stripe/webhook/route.ts` calls
-  `await request.text()` — a parsed body can no longer be signature-verified. It handles
-  `account.updated` only, idempotent by nature since it writes state, not deltas — the first
-  non-idempotent handler needs a processed-event table this one doesn't.
-- **Connect state is Stripe's word, not the driver's.** `stripe_account_id`,
-  `stripe_payouts_enabled` and `stripe_details_submitted` sit outside the `authenticated` column
-  `UPDATE` grant, written only by the service role. Onboarding links are single-use and short-lived
-  — create one per attempt, never cache one.
-- `src/lib/payouts/types.ts` is a **temporary** hand-written bridge; delete it the moment
-  `npm run types:generate` runs against the pushed migration.
+- **Capture before payout, in that order.** The capture funds the platform balance the transfer
+  draws on; reversed, it is the `balance_insufficient` rider charging exists to end.
+- **Neither `src/lib/payouts/` nor `src/lib/payments/` does arithmetic on money.** A payout is the
+  ledger's copy of the ride's write-once `driver_payout_cents`; a capture is the stored
+  `rider_total_cents`; a hold is `holdAmountCents()`'s. RIDO absorbs card processing, so nothing is
+  netted. `@rido/pricing` is imported by neither — that would be the bug.
+- **`rider_total_cents` is what the rider pays, `fare_cents` what commission splits.** Equal until a
+  pass-through exists. Render the first to a rider; the second is the driver's business.
+- **Two vendor files, one rule.** `src/lib/stripe/server.ts` is the only file importing `stripe`;
+  `src/lib/payments/browser.ts` the only one importing `@stripe/stripe-js` (mounted per `map.ts`'s
+  opaque-handle precedent — **not** the React bindings, which would put vendor components in JSX).
+  Both return app-shaped results, so retryability comes from the *original* Stripe error.
+- **A hold is placed on a ride that already exists.** `requestRide()` inserts first, authorizes
+  second, and **cancels the row back if the authorization fails** — a stranded `'requested'` ride
+  would block the rider from booking anything (`rides_one_active_per_rider`).
+- **Cancellation: capture the fee, THEN flip the status.** `queue_cancellation_payout()` reads the
+  captured charge, so the reverse order silently pays nobody. ADR-0018.
+- **The webhook reads the raw body** (`await request.text()` — a parsed body can't be
+  signature-verified) and every handler writes **state, not deltas**, which is why no processed-event
+  table exists. The first delta-applying handler needs one.
+- **Stripe's word, not the user's.** The `drivers.stripe_*` columns and every
+  `rider_payment_profiles` column sit outside the `authenticated` `UPDATE` grant. Onboarding links
+  and SetupIntent secrets are single-use — one per attempt, never cached.
+- `src/lib/payouts/types.ts` and `src/lib/payments/types.ts` are **temporary** bridges; delete both
+  the moment `npm run types:generate` runs against the pushed migrations.
 
 ## Maps
 

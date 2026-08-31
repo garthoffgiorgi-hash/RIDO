@@ -4,8 +4,10 @@ Migrations are the **only** source of truth for schema. Never change the databas
 never edit a migration that has been applied — add a new one.
 
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
-`commission_tiers`. Field-level detail: `docs/architecture/data-model.md`. Completion flow:
-`docs/architecture/ride-completion.md`. Payout flow: `docs/architecture/payouts.md`.
+`ride_charges` · `rider_payment_profiles` · `commission_tiers` · `fare_rate_cards`. Field-level
+detail: `docs/architecture/data-model.md`. Completion flow:
+`docs/architecture/ride-completion.md`. Payout flow: `docs/architecture/payouts.md`. Charge flow:
+`docs/architecture/rider-charging.md`.
 
 ## Schema rules
 
@@ -135,6 +137,16 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   `on conflict do nothing` against `driver_payouts_one_per_ride` makes a re-fired trigger a no-op.
   **Paying is deliberately not part of this transaction** — the transfer is an app-side, retryable
   step against the row the trigger left behind. (ADR-0015)
+- **`ride_charges` is the inbound mirror of `driver_payouts`**: same `on delete restrict`, same
+  read-own/write-none RLS, `ride_charges_captured_iff_settled` so no row records money as taken
+  without its receipt, ADR-0016's attempt claim from the start. **No `kind` column** — a cancellation
+  fee is a partial capture of the same hold, so what a captured row was *for* is answered by
+  `rides.status`, once. A canceled ride pays its driver via `queue_cancellation_payout()`, and **the
+  fee must be captured before the status flips**, since that trigger reads the captured row.
+- **`rides.rider_total_cents` is what the rider pays; `fare_cents` is what commission splits** —
+  equal until a `FareLineItem` exists, with `>= fare_cents` enforced. Commission still binds
+  `fare_cents` alone, so `rides_commission_sums_to_fare` is untouched: a pass-through is money RIDO
+  collects and remits, never revenue to split. (ADR-0017, ADR-0018)
 - **A retry needs its own claim, not just a stable idempotency key.** `claim_driver_payout_attempt`
   hands out an attempt number, folded into `<payout id>_<attempt>` as Stripe's key, so a genuinely
   new retry is genuinely new to Stripe rather than a replay of the row's first cached response — a

@@ -49,6 +49,56 @@ describe("stripeErrorMessage — the driver's account", () => {
   });
 });
 
+describe("stripeErrorMessage — the rider's card (ADR-0017)", () => {
+  // The only family in this file a RIDER reads. The tests are as much about voice as behaviour:
+  // a rider must never be shown RIDO's plumbing, and must always be told what to do next.
+  const DECLINES = [
+    "card_declined",
+    "insufficient_funds",
+    "expired_card",
+    "incorrect_cvc",
+    "authentication_required",
+  ];
+
+  it("tells a rider what to do, without mentioning payouts or RIDO's internals", () => {
+    for (const code of DECLINES) {
+      const r = result({ type: "StripeCardError", code });
+      assert.match(
+        r.message,
+        /try|add|check/i,
+        `${code} should tell the rider an action, got: ${r.message}`,
+      );
+      assert.doesNotMatch(r.message, /payout|balance|stripe|RIDO/i, `${code} leaked internals`);
+    }
+  });
+
+  it("marks every decline NOT retryable — a declined card declines again", () => {
+    // `retryable` means "the same call would succeed unchanged". Retrying a decline just collects
+    // identical failures; recovery is a different card, which is a different call.
+    for (const code of DECLINES) {
+      assert.equal(
+        result({ type: "StripeCardError", code }).retryable,
+        false,
+        `${code} must not be retryable`,
+      );
+    }
+  });
+
+  it("distinguishes insufficient funds from a flat decline", () => {
+    // Same remedy, different diagnosis — and a rider who knows which one it was can act faster.
+    const declined = result({ type: "StripeCardError", code: "card_declined" }).message;
+    const broke = result({ type: "StripeCardError", code: "insufficient_funds" }).message;
+    assert.notEqual(declined, broke);
+    assert.match(broke, /enough available/i);
+  });
+
+  it("treats a 3DS challenge as a question, not a refusal", () => {
+    const r = result({ type: "StripeCardError", code: "authentication_required" });
+    assert.match(r.message, /confirm/i);
+    assert.doesNotMatch(r.message, /declined/i);
+  });
+});
+
 describe("stripeErrorMessage — our configuration, not the driver's problem", () => {
   it("names the env var on an auth error rather than blaming the user", () => {
     const r = result({ type: "StripeAuthenticationError" });

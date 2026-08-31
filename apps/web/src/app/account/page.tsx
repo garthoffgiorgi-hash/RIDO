@@ -5,6 +5,8 @@ import { Card } from "@/components/ui/Card";
 import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
+import { getPaymentProfile } from "@/lib/payments/server";
+import { PaymentCard } from "./PaymentCard";
 
 /**
  * Signed-in landing page. One surface, role-aware: everyone gets a way to book a ride, and
@@ -23,6 +25,7 @@ import { isActiveDriver } from "@/lib/drivers/status";
 export default async function AccountPage() {
   const user = await requireUser();
   const driver = await getOwnDriverProfile(user);
+  const paymentProfile = await getPaymentProfile(user);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ivory p-6">
@@ -56,6 +59,8 @@ export default async function AccountPage() {
             Book a ride
           </Button>
         </Card>
+
+        <PaymentCard profile={paymentProfile} />
 
         {driver ? (
           <Card>

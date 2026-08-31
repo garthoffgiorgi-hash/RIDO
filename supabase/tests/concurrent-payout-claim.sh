@@ -52,7 +52,19 @@ PAYOUT_ID=$(psql -d "$CONN" -tA -c "
 CLAIM="select claim_driver_payout_attempt('$PAYOUT_ID')"
 
 A_OUT=$(mktemp)
-trap 'rm -f "$A_OUT"' EXIT
+
+# Clean up on the way out, not only on the way in. This script's fixture is a driver_payouts row,
+# and 011_driver_payouts.sql asserts a GLOBAL count of that table — so leaving one behind makes a
+# later pgTAP run fail on a row this script created. A test that breaks a different test is worse
+# than no test. (Same fix as concurrent-charge-claim.sh, for the same reason.)
+cleanup() {
+  rm -f "$A_OUT"
+  psql -d "$CONN" -q -c "
+    delete from driver_payouts
+      where driver_id in (select id from drivers where auth_user_id = '$DRIVER_AUTH_ID');
+  " 2>/dev/null || true
+}
+trap cleanup EXIT
 
 # Session A: claim, hold the transaction open, then commit. Backgrounded.
 psql -d "$CONN" -v ON_ERROR_STOP=1 -tA -q >"$A_OUT" <<SQL &

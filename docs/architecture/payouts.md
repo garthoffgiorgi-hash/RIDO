@@ -2,7 +2,8 @@
 
 *The third of the money docs. `fare-pricing.md` decides what a ride costs; `ride-completion.md`
 decides how that splits and snapshots it; this decides how the driver's half reaches their bank.
-Why it's shaped this way: `../decisions/0015-connect-payouts-per-ride.md`.*
+Why it's shaped this way: `../decisions/0015-connect-payouts-per-ride.md` and
+`../decisions/0016-payout-attempt-claim.md`.*
 
 **Status: built, and blocked on the inbound half in production.** `apps/web/src/lib/stripe/`,
 `apps/web/src/lib/payouts/`, the `driver_payouts` table, and `/drive`'s payout card. Transfers
@@ -29,9 +30,11 @@ likes, because the ledger is what remembers.
    the webhook and the redirect race and either can arrive first.
 3. **A ride completes.** `queue_driver_payout` inserts a `pending` row carrying exactly the ride's
    `driver_payout_cents`. Nothing is computed — the amount is copied from a write-once snapshot.
-4. **The transfer fires**, best-effort, right after completion. On success the row becomes `paid`
-   and records the transfer id. On failure it stays `pending` (retryable) or becomes `failed`
-   (terminal), and `/drive` shows it either way.
+4. **The transfer fires**, best-effort, right after completion. `settle()` first claims the row
+   (`claim_driver_payout_attempt`), which hands back an attempt number folded into Stripe's
+   idempotency key — the reason a retry can actually retry, not replay a stale cached response
+   (ADR-0016). On success the row becomes `paid` and records the transfer id. On failure it stays
+   `pending` (retryable) or becomes `failed` (terminal), and `/drive` shows it either way.
 5. **Stripe pays the bank** on its own schedule. RIDO builds no scheduler.
 
 ## Ledger states, and why the distinction matters
@@ -48,15 +51,25 @@ wrong, and the money is theirs. Only a genuine terminal refusal gets a word that
 
 ## What guarantees a driver is never paid twice
 
-Two independent mechanisms, either sufficient alone:
+Three independent mechanisms, any one alone sufficient:
 
-- **Postgres.** `driver_payouts_one_per_ride`, a partial unique index, means a ride cannot be owed
-  for twice — whatever the application does with retries or double-taps.
-- **Stripe.** The transfer call passes the payout row's id as its idempotency key, so two
-  simultaneous attempts on the same row return the same transfer rather than creating two.
+- **Postgres, at the ride level.** `driver_payouts_one_per_ride`, a partial unique index, means a
+  ride cannot be owed for twice — whatever the application does with retries or double-taps.
+- **Postgres, at the attempt level.** `claim_driver_payout_attempt` lets only one attempt be
+  in-flight for a row at a time — a conditional `UPDATE`, `WHERE settling = false`, is the whole
+  lock, the same pattern driver accept uses (`supabase/CLAUDE.md`). Two simultaneous `settle()`
+  calls for one row: exactly one gets an attempt number, the other gets `null` and never calls
+  Stripe. `concurrent-payout-claim.sh` proves this the way `concurrent-accept-ride.sh` proves
+  accept.
+- **Stripe.** The transfer call passes `<payout id>_<attempt number>` as its idempotency key. Even
+  if a claim were somehow issued twice, Stripe would still return the same transfer rather than
+  create two.
 
 They are belt and braces on purpose. A duplicated transfer is the only failure in this system that
-costs real cash and cannot be undone by a database rollback.
+costs real cash and cannot be undone by a database rollback. (ADR-0016 is why the key needed the
+attempt number at all: a payout id alone made Stripe replay a payout's *first* cached response —
+including a retryable `balance_insufficient` — for up to 24 hours, so a genuinely new retry could
+never actually reach Stripe.)
 
 ## Why RIDO absorbs card processing
 
@@ -86,3 +99,5 @@ has no such limit, which is what makes the path provable before the inbound half
   only by the service role, from Stripe's word — never asserted by a driver.
 - The Stripe SDK is imported in exactly one file (`apps/web/src/lib/stripe/server.ts`), enforced by
   `scripts/check-context.mjs` rule 7.
+- Every `settle()` call claims the row before touching Stripe and releases it in a `finally`, on
+  every exit path. A claim left stuck would strand a payout worse than the bug ADR-0016 fixes.

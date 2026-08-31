@@ -178,8 +178,15 @@ export interface TransferRequest {
   readonly accountId: string;
   /** Copied from the ledger row, which copied it from the ride's snapshot. Never computed here. */
   readonly amountCents: number;
-  /** The `driver_payouts` row id. Doubles as Stripe's idempotency key — see below. */
+  /** The `driver_payouts` row id. Half of Stripe's idempotency key — see below. */
   readonly payoutId: string;
+  /**
+   * From `claim_driver_payout_attempt`, the other half of the idempotency key. A payout id alone
+   * would make every retry of the same row replay Stripe's first cached response forever, up to
+   * 24 hours, even a stale `balance_insufficient` — this is what makes a genuinely new attempt
+   * genuinely new to Stripe.
+   */
+  readonly attempt: number;
   /** The ride this settles, for reconciliation in the Stripe dashboard. */
   readonly rideId: string | null;
 }
@@ -198,12 +205,15 @@ export type TransferOutcome =
 /**
  * Sends money to a driver's connected account.
  *
- * **The idempotency key is the payout row's id**, which makes a duplicate transfer impossible from
- * two directions at once: Postgres will not let two ledger rows exist for one ride
- * (`driver_payouts_one_per_ride`), and Stripe will not create two transfers for one key even if
- * this function is somehow called twice for the same row — a retry, a double-tap, two server
- * instances. Duplicate-paying a driver is the one failure here that costs real cash and cannot be
- * undone by a database rollback, so it is prevented in two systems that fail independently.
+ * **The idempotency key is `<payout id>_<attempt>`**, which makes a duplicate transfer impossible
+ * from two directions at once: Postgres will not let two ledger rows exist for one ride
+ * (`driver_payouts_one_per_ride`), and `claim_driver_payout_attempt` will not let two concurrent
+ * calls for the same row obtain the same attempt number — a retry, a double-tap, two server
+ * instances racing settle() all collapse to one attempt, one key, one transfer. Duplicate-paying a
+ * driver is the one failure here that costs real cash and cannot be undone by a database rollback,
+ * so it is prevented in two systems that fail independently. The attempt number is *why* a payout
+ * that failed `balance_insufficient` yesterday can genuinely be retried today, rather than Stripe
+ * replaying its cached first response forever — see `20260901130000_add_payout_attempt_claim.sql`.
  *
  * Returns the transfer id, which the caller records on the ledger row. A `paid` row without one is
  * refused by `driver_payouts_transfer_id_iff_paid`.
@@ -225,7 +235,7 @@ export async function createTransfer(request: TransferRequest): Promise<Transfer
           rido_ride_id: request.rideId ?? "",
         },
       },
-      { idempotencyKey: `rido_payout_${request.payoutId}` },
+      { idempotencyKey: `rido_payout_${request.payoutId}_${request.attempt}` },
     );
     return { ok: true, transferId: transfer.id };
   } catch (error) {

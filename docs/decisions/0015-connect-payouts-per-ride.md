@@ -103,6 +103,13 @@ payout outcome and the ledger remembers.
 
 ### 4. Duplicate transfers are prevented twice, in two systems
 
+> **The idempotency-key claim below is superseded by ADR-0016.** A payout id alone as the key
+> made Stripe replay a payout's first cached response — including a retryable
+> `balance_insufficient` — for up to 24 hours, so a retry could never actually retry. The
+> exclusivity argument (two simultaneous attempts on one row yield one transfer) still holds; the
+> key itself is now `<payout id>_<attempt number>`, the second half supplied by
+> `claim_driver_payout_attempt`.
+
 Paying a driver twice is the one failure here that costs real cash and cannot be undone by a
 database rollback. So: `driver_payouts_one_per_ride` (a partial unique index) means a ride cannot
 be owed for twice, and the transfer call passes the **payout row's id as Stripe's idempotency key**,
@@ -134,7 +141,8 @@ package and no import map, and the repo already has route handlers. `apps/web/sr
   `balance_insufficient`, which `apps/web/src/lib/stripe/errors.ts` treats as a first-class case
   with its own message — the row stays `pending`, the driver is told their earnings are recorded,
   and nothing is lost. This is the honest cost of building the halves in sequence, and the ledger
-  is what makes it survivable. Test mode has no such limit, so the path is provable now.
+  is what makes it survivable. Test mode has no such limit, so the path is provable now. **A retry
+  of this exact case could not actually succeed until ADR-0016** — see the note under §4.
 - **`database.types.ts` is stale** against this migration, which adds a table and two columns.
   `apps/web/src/lib/payouts/types.ts` bridges it with narrow, documented local types — the same
   pattern ADR-0012 used and ADR-0014 deleted. **Delete it once `npm run types:generate` has run

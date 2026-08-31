@@ -135,6 +135,12 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   `on conflict do nothing` against `driver_payouts_one_per_ride` makes a re-fired trigger a no-op.
   **Paying is deliberately not part of this transaction** — the transfer is an app-side, retryable
   step against the row the trigger left behind. (ADR-0015)
+- **A retry needs its own claim, not just a stable idempotency key.** `claim_driver_payout_attempt`
+  hands out an attempt number, folded into `<payout id>_<attempt>` as Stripe's key, so a genuinely
+  new retry is genuinely new to Stripe rather than a replay of the row's first cached response — a
+  payout id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same
+  one-conditional-`UPDATE`-is-the-lock shape as driver accept: `WHERE settling = false` (or stale
+  past two minutes, recovering an abandoned attempt) is the entire mechanism. (ADR-0016)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
   function's row shapes stop being hand-written projections. The payouts migration adds a table and
   two columns, so it is the first since `007` that genuinely needs this;
@@ -167,8 +173,10 @@ pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connecti
 `reserve_driver_month()` actually blocks a second completion rather than letting it read a stale
 month-to-date figure. `concurrent-accept-ride.sh` proves the same class of thing for accept — two
 connections racing one ride, asserting exactly one wins and the loser genuinely blocked rather than
-losing by luck — even though accept needs no lock of its own to get there (ADR-0013). Run these
-manually against a real instance; neither is part of `test db`.
+losing by luck — even though accept needs no lock of its own to get there (ADR-0013).
+`concurrent-payout-claim.sh` proves the same for `claim_driver_payout_attempt` (ADR-0016): two
+`settle()` calls racing one payout, asserting the loser blocks and gets `null`, never a second
+attempt number. Run these manually against a real instance; none is part of `test db`.
 
 **`concurrent-apply-ride-commission.sh` is retired.** It raced two *different* rides for one
 driver to completion — but `rides_one_active_per_driver` (ADR-0013) makes that setup illegal now:

@@ -39,8 +39,12 @@ import type { DriverConnectColumns, DriverPayoutRow } from "./types.ts";
  * `./types.ts`. These casts are the whole of the bridge, kept at the query boundary so the rows
  * they produce are strongly typed everywhere downstream. Remove with `./types.ts`.
  */
-// biome-ignore lint/suspicious/noExplicitAny: the generated types predate this migration; see ./types.ts
-type UntypedClient = { from: (table: string) => any };
+type UntypedClient = {
+  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate this migration; see ./types.ts
+  from: (table: string) => any;
+  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate this migration; see ./types.ts
+  rpc: (fn: string, args?: Record<string, unknown>) => any;
+};
 
 /** Every column of `DriverPayoutRow`, named once so the three reads below cannot drift apart. */
 const PAYOUT_COLUMNS =
@@ -246,92 +250,124 @@ export type SettleOutcome =
  * nothing was attempted, nothing is wrong, and the money is still theirs. That distinction is what
  * keeps `/drive` from telling a driver their earnings "failed" when they simply haven't linked a
  * bank yet.
+ *
+ * **Every call claims the row first**, via `claim_driver_payout_attempt` — see
+ * `20260901130000_add_payout_attempt_claim.sql`. A payout id alone was Stripe's whole idempotency
+ * key until that migration; stable across retries, which stopped a concurrent double-call from
+ * ever producing two transfers, but also meant Stripe replayed a payout's *first* cached response
+ * — success or failure — for up to 24 hours, so a retryable `balance_insufficient` could never
+ * actually be retried. The claim supplies a fresh attempt number per genuine attempt while still
+ * collapsing two simultaneous callers on the same row to one.
  */
 async function settle(payout: DriverPayoutRow): Promise<PayoutsResult<SettleOutcome>> {
   const service = createServiceRoleClient() as unknown as UntypedClient;
 
-  const { data: driverRow, error: driverError } = await service
-    .from("drivers")
-    .select("id, stripe_account_id, stripe_payouts_enabled, stripe_details_submitted")
-    .eq("id", payout.driver_id)
-    .maybeSingle();
-
-  if (driverError || !driverRow) return failed("We couldn't find that driver.");
-
-  const driver = driverRow as {
-    stripe_account_id: string | null;
-    stripe_payouts_enabled: boolean;
-    stripe_details_submitted: boolean;
-  };
-
-  const status = connectStatus(
-    driver.stripe_account_id === null
-      ? null
-      : {
-          payoutsEnabled: driver.stripe_payouts_enabled,
-          detailsSubmitted: driver.stripe_details_submitted,
-          currentlyDue: [],
-          disabledReason: null,
-        },
-  );
-
-  if (!driver.stripe_account_id || !canReceiveTransfers(status)) {
-    // Left pending on purpose — see the docstring. Nothing was attempted.
-    return { ok: true, data: { kind: "deferred", message: connectStatusMessage(status) } };
-  }
-
-  const transfer = await createTransfer({
-    accountId: driver.stripe_account_id,
-    amountCents: payout.amount_cents,
-    payoutId: payout.id,
-    rideId: payout.ride_id,
+  const { data: attempt, error: claimError } = await service.rpc("claim_driver_payout_attempt", {
+    p_payout_id: payout.id,
   });
 
-  if (!transfer.ok) {
-    // `retryable` comes from the original Stripe error, classified inside the vendor boundary —
-    // it is what decides pending-vs-failed, and it must not be re-derived from the translated
-    // message, which no longer carries the error's type or code.
-    const nextStatus = transfer.retryable ? "pending" : "failed";
-
-    await service
-      .from("driver_payouts")
-      .update({ status: nextStatus, failure_reason: transfer.message })
-      .eq("id", payout.id);
-
+  if (claimError) return failed("We couldn't start that payout attempt.");
+  if (attempt === null) {
+    // Another call is already mid-attempt for this exact row, or it was just paid — either way,
+    // calling Stripe here risks a second real transfer. Left pending; whoever holds the claim
+    // will resolve it.
     return {
       ok: true,
-      data: transfer.retryable
-        ? { kind: "deferred", message: transfer.message }
-        : { kind: "failed", message: transfer.message },
+      data: { kind: "deferred", message: "This payout is already being sent." },
     };
   }
 
-  // Conditional on still being unpaid, matching the discipline accept and start-trip use. Stripe's
-  // idempotency key already makes a duplicate transfer impossible, so this guards the record
-  // rather than the money — but a ledger that can be overwritten is a ledger you can't trust.
-  const { error: updateError } = await service
-    .from("driver_payouts")
-    .update({
-      status: "paid",
-      stripe_transfer_id: transfer.transferId,
-      failure_reason: null,
-    })
-    .eq("id", payout.id)
-    .neq("status", "paid");
+  try {
+    const { data: driverRow, error: driverError } = await service
+      .from("drivers")
+      .select("id, stripe_account_id, stripe_payouts_enabled, stripe_details_submitted")
+      .eq("id", payout.driver_id)
+      .maybeSingle();
 
-  if (updateError) {
-    // The money moved but the ledger didn't. Loud, because it is the one inconsistency here that
-    // a retry cannot fix on its own — Stripe's idempotency key means the retry returns the same
-    // transfer, so the row can still be reconciled, but someone should know.
-    console.error("payouts: transfer succeeded but ledger update failed", {
+    if (driverError || !driverRow) return failed("We couldn't find that driver.");
+
+    const driver = driverRow as {
+      stripe_account_id: string | null;
+      stripe_payouts_enabled: boolean;
+      stripe_details_submitted: boolean;
+    };
+
+    const status = connectStatus(
+      driver.stripe_account_id === null
+        ? null
+        : {
+            payoutsEnabled: driver.stripe_payouts_enabled,
+            detailsSubmitted: driver.stripe_details_submitted,
+            currentlyDue: [],
+            disabledReason: null,
+          },
+    );
+
+    if (!driver.stripe_account_id || !canReceiveTransfers(status)) {
+      // Left pending on purpose — see the docstring. Nothing was attempted.
+      return { ok: true, data: { kind: "deferred", message: connectStatusMessage(status) } };
+    }
+
+    const transfer = await createTransfer({
+      accountId: driver.stripe_account_id,
+      amountCents: payout.amount_cents,
       payoutId: payout.id,
-      transferId: transfer.transferId,
-      cause: updateError.message,
+      attempt,
+      rideId: payout.ride_id,
     });
-    return failed("Your payout was sent but we couldn't update our records. We're on it.");
-  }
 
-  return { ok: true, data: { kind: "paid", transferId: transfer.transferId } };
+    if (!transfer.ok) {
+      // `retryable` comes from the original Stripe error, classified inside the vendor boundary —
+      // it is what decides pending-vs-failed, and it must not be re-derived from the translated
+      // message, which no longer carries the error's type or code.
+      const nextStatus = transfer.retryable ? "pending" : "failed";
+
+      await service
+        .from("driver_payouts")
+        .update({ status: nextStatus, failure_reason: transfer.message })
+        .eq("id", payout.id);
+
+      return {
+        ok: true,
+        data: transfer.retryable
+          ? { kind: "deferred", message: transfer.message }
+          : { kind: "failed", message: transfer.message },
+      };
+    }
+
+    // Conditional on still being unpaid, matching the discipline accept and start-trip use. The
+    // claim already ruled out a concurrent double-call, so this guards the record rather than the
+    // money — but a ledger that can be overwritten is a ledger you can't trust.
+    const { error: updateError } = await service
+      .from("driver_payouts")
+      .update({
+        status: "paid",
+        stripe_transfer_id: transfer.transferId,
+        failure_reason: null,
+      })
+      .eq("id", payout.id)
+      .neq("status", "paid");
+
+    if (updateError) {
+      // The money moved but the ledger didn't. Loud, because it is the one inconsistency here that
+      // a retry cannot fix on its own — Stripe's idempotency key means the retry returns the same
+      // transfer, so the row can still be reconciled, but someone should know.
+      console.error("payouts: transfer succeeded but ledger update failed", {
+        payoutId: payout.id,
+        transferId: transfer.transferId,
+        cause: updateError.message,
+      });
+      return failed("Your payout was sent but we couldn't update our records. We're on it.");
+    }
+
+    return { ok: true, data: { kind: "paid", transferId: transfer.transferId } };
+  } finally {
+    // Unconditional, on every path out of the try — win, lose, or an early return above. A
+    // released claim that "shouldn't" have been costs nothing (status <> 'paid' still gates the
+    // next one); a claim left stuck costs a driver their money until the two-minute staleness
+    // window in claim_driver_payout_attempt passes.
+    await service.rpc("release_driver_payout_attempt", { p_payout_id: payout.id });
+  }
 }
 
 /**

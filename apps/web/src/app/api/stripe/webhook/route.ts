@@ -1,6 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { syncChargeFromWebhook } from "@/lib/payments/server";
 import { syncConnectAccountFromWebhook } from "@/lib/payouts/server";
-import { type StripeAccount, verifyWebhookSignature } from "@/lib/stripe/server";
+import {
+  type StripeAccount,
+  type StripePaymentIntent,
+  verifyWebhookSignature,
+} from "@/lib/stripe/server";
 
 /**
  * Stripe's webhook endpoint — the first `api/` route in this app.
@@ -27,7 +32,12 @@ import { type StripeAccount, verifyWebhookSignature } from "@/lib/stripe/server"
  * "received", not "handled", and returning an error would make Stripe retry something that will
  * never do anything.
  */
-const HANDLED = new Set(["account.updated"]);
+const HANDLED = new Set([
+  "account.updated",
+  "payment_intent.succeeded",
+  "payment_intent.payment_failed",
+  "payment_intent.canceled",
+]);
 
 export async function POST(request: NextRequest) {
   // The RAW body. `constructEvent` hashes the exact bytes Stripe signed, so parsing to JSON and
@@ -50,11 +60,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true, handled: false });
   }
 
-  // `account.updated` is idempotent by nature: it carries the account's full current state, and
-  // handling it writes that state rather than applying a delta. Replaying it — which Stripe does,
-  // on its own retry schedule and out of order — converges on the same row either way. That is
-  // why this PR needs no processed-event table. The first handler here that applies a DELTA
-  // (crediting a balance, incrementing a counter) breaks that property and must add one.
+  // EVERY handler below writes STATE, never a delta.
+  //
+  // `account.updated` carries the account's full current state; the three `payment_intent.*` events
+  // carry the intent's. Handling any of them sets a row to what Stripe says it is right now, so
+  // replaying one — which Stripe does, on its own retry schedule and out of order — converges on
+  // the same row either way. That is still why there is no processed-event table here, and rider
+  // charging did not change it. **The first handler that applies a DELTA (crediting a balance,
+  // incrementing a counter) breaks the property and must add one.**
   if (event.type === "account.updated") {
     const account = event.data.object as StripeAccount;
     const synced = await syncConnectAccountFromWebhook(account);
@@ -64,6 +77,39 @@ export async function POST(request: NextRequest) {
       // the case its retry schedule exists for.
       console.error("stripe webhook: failed to sync connect account", {
         accountId: account.id,
+        reason: synced.message,
+      });
+      return NextResponse.json({ error: "Could not record that update." }, { status: 500 });
+    }
+  }
+
+  if (
+    event.type === "payment_intent.succeeded" ||
+    event.type === "payment_intent.payment_failed" ||
+    event.type === "payment_intent.canceled"
+  ) {
+    const intent = event.data.object as StripePaymentIntent;
+
+    // The app already records these when it makes the call itself — this is reconciliation, for
+    // the cases the app never saw: a rider who completed a 3DS challenge after closing the tab, a
+    // hold Stripe expired on its own a week later, a capture whose response was lost in transit.
+    const status =
+      event.type === "payment_intent.succeeded"
+        ? ("captured" as const)
+        : event.type === "payment_intent.canceled"
+          ? ("voided" as const)
+          : ("failed" as const);
+
+    const synced = await syncChargeFromWebhook(
+      intent.id,
+      status,
+      status === "captured" ? intent.amount_received : null,
+      intent.last_payment_error?.message ?? null,
+    );
+
+    if (!synced.ok) {
+      console.error("stripe webhook: failed to sync a charge", {
+        paymentIntentId: intent.id,
         reason: synced.message,
       });
       return NextResponse.json({ error: "Could not record that update." }, { status: 500 });

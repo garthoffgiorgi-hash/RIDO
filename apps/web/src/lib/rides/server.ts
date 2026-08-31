@@ -1,21 +1,35 @@
 import "server-only";
 
-import { cents, commissionForRide, type FareBreakdown } from "@rido/pricing";
+import {
+  type Bps,
+  type Cents,
+  cents,
+  commissionForRide,
+  type FareBreakdown,
+  holdAmountCents,
+} from "@rido/pricing";
 import type { User } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth/server";
 import { getActiveCommissionTiers, getDriverMonthToDateCents } from "@/lib/commission/server.ts";
 import { getOwnDriverProfile } from "@/lib/drivers/server.ts";
 import type { DriverProfile } from "@/lib/drivers/status.ts";
-import { quoteRide } from "@/lib/fares/server";
+import { getPaymentPolicy, quoteRide } from "@/lib/fares/server";
 import { measureRoute } from "@/lib/maps/server.ts";
 import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
+import {
+  authorizeRideCharge,
+  chargeCancellationFee,
+  getPaymentProfile,
+  voidRideCharge,
+} from "@/lib/payments/server.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 import { canAcceptRide, type OpenRide } from "./accept.ts";
+import { cancellationOutcome } from "./cancellation.ts";
 import { completionErrorMessage } from "./completion-errors.ts";
 import { failed, type RidesResult } from "./result.ts";
 import { canStartTrip, type StartableRide } from "./start.ts";
-import { ACTIVE_STATUSES, canRiderCancel, type RideStatus } from "./status.ts";
+import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
 
 /**
  * The booking half (rider), the accept half (driver), and the completion half that closes the
@@ -81,6 +95,10 @@ export async function quoteRideRequest(
 export type RequestRideOutcome =
   | { readonly kind: "booked"; readonly rideId: string }
   | { readonly kind: "price_changed"; readonly quote: RideQuote }
+  /** No card on file. The sheet collects one and calls back — never a dead end mid-booking. */
+  | { readonly kind: "needs_card" }
+  /** The rider's bank wants them to confirm. The browser finishes it and calls back. */
+  | { readonly kind: "needs_confirmation"; readonly rideId: string; readonly clientSecret: string }
   | { readonly kind: "failed"; readonly message: string };
 
 /**
@@ -95,6 +113,13 @@ export type RequestRideOutcome =
  * If the fresh fare disagrees with what the rider was shown, nothing is written: the caller gets
  * the new quote back and re-confirms, one extra tap rather than a rider being charged a number
  * they never saw (ADR-0012).
+ *
+ * **Since ADR-0017 this also places a hold**, and the order is deliberate: the ride row is written
+ * FIRST, then authorized against. The row's id is what the charge's foreign key, the PaymentIntent's
+ * `transfer_group` and its metadata all need, so it has to exist before the call that references
+ * it. And if the authorization then fails, the ride is canceled right back — leaving it
+ * `'requested'` would trip `rides_one_active_per_rider` and block the rider from booking anything
+ * at all, stuck behind a ride they never actually got.
  */
 export async function requestRide(
   pickup: Place,
@@ -114,13 +139,27 @@ export async function requestRide(
     return { kind: "price_changed", quote: quote.data };
   }
 
+  // A card has to exist before a ride does. Checking here rather than after the insert means a
+  // cardless rider never creates a row that has to be cleaned up — they get the card step instead.
+  const profile = await getPaymentProfile(user);
+  if (!profile.hasCard) {
+    return { kind: "needs_card" };
+  }
+
+  const policy = await getPaymentPolicy(MARKET);
+  if (!policy.ok) return { kind: "failed", message: policy.message };
+
   const payload: Database["public"]["Tables"]["rides"]["Insert"] = {
     rider_id: user.id,
     driver_id: null,
     fare_cents: quote.data.fareCents,
+    // The end of a journey to nowhere: `riderTotalCents` has been computed by `quoteFare()` and
+    // carried through `RideQuote` since ADR-0009, and discarded at this exact line until ADR-0017.
+    // It is what the rider is charged; `fare_cents` is what commission splits. Equal today.
+    rider_total_cents: quote.data.riderTotalCents,
     pickup_address: pickup.address,
     dropoff_address: dropoff.address,
-  };
+  } as Database["public"]["Tables"]["rides"]["Insert"];
 
   const service = createServiceRoleClient();
   const { data, error } = await service.from("rides").insert(payload).select("id").single();
@@ -133,7 +172,41 @@ export async function requestRide(
     return { kind: "failed", message: "We couldn't book that ride. Try again in a moment." };
   }
 
-  return { kind: "booked", rideId: data.id };
+  const rideId = data.id;
+
+  // The hold. `holdAmountCents` is @rido/pricing's — this function computes no money (root
+  // CLAUDE.md invariant 5), it only says which numbers go in.
+  const holdCents = holdAmountCents({
+    riderTotalCents: quote.data.riderTotalCents as Cents,
+    bufferBps: policy.data.authorizationBufferBps as Bps,
+  });
+
+  const charge = await authorizeRideCharge(rideId, user.id, holdCents);
+
+  if (charge.kind === "requires_action") {
+    // The ride exists and the hold is half-placed; the rider answers their bank and the browser
+    // calls back. Deliberately NOT canceled here — cancelling a ride the rider is actively
+    // authorizing would be undoing something that is still going right.
+    return { kind: "needs_confirmation", rideId, clientSecret: charge.clientSecret };
+  }
+
+  if (charge.kind !== "authorized") {
+    // Unwind. A `'requested'` ride with no hold would occupy the rider's one active-ride slot
+    // (`rides_one_active_per_rider`) and lock them out of booking again — so the row that was
+    // written a moment ago is canceled rather than left as a trap.
+    await service
+      .from("rides")
+      .update({ status: "canceled", canceled_at: new Date().toISOString() })
+      .eq("id", rideId);
+
+    const message =
+      charge.kind === "failed" || charge.kind === "deferred"
+        ? charge.message
+        : "We couldn't set up payment for that ride.";
+    return { kind: "failed", message };
+  }
+
+  return { kind: "booked", rideId };
 }
 
 export interface ActiveRide {
@@ -176,27 +249,71 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
   };
 }
 
+/** What a cancellation cost the rider, so the caller can say so honestly. */
+export interface CancellationResult {
+  readonly feeChargedCents: number;
+}
+
 /**
- * Cancels a ride the signed-in user requested. Re-checks ownership and `canRiderCancel()`
- * server-side rather than trusting that the cancel button was only rendered when it was allowed —
- * the same defense-in-depth `requireUser()` already applies to every Server Action here, not just
- * the page around it.
+ * Cancels a ride the signed-in user requested, releasing or partly capturing their hold.
+ *
+ * Re-checks ownership and the cancellation rule server-side rather than trusting that the button
+ * was only rendered when it was allowed — the same defense-in-depth `requireUser()` already applies
+ * to every Server Action here. The rule itself is `cancellationOutcome()`, pure and tested, which
+ * replaced `canRiderCancel()` as the authority when ADR-0018 made late cancellation possible.
+ *
+ * **The order of the last two steps is load-bearing.** A fee is captured BEFORE the status flips
+ * to `'canceled'`, because `queue_cancellation_payout()` fires on that transition and reads the
+ * captured charge to pay the driver. Capturing afterwards would pay nobody, silently.
  */
-export async function cancelRide(rideId: string): Promise<RidesResult<null>> {
+export async function cancelRide(rideId: string): Promise<RidesResult<CancellationResult>> {
   const user = await requireUser();
 
   const supabase = await createServerClient();
   const { data: ride, error: readError } = await supabase
     .from("rides")
-    .select("id, status, rider_id")
+    .select("id, status, rider_id, accepted_at")
     .eq("id", rideId)
     .maybeSingle();
 
   if (readError || !ride || ride.rider_id !== user.id) {
     return failed("We couldn't find that ride.");
   }
-  if (!canRiderCancel(ride.status as RideStatus)) {
+
+  const policy = await getPaymentPolicy(MARKET);
+  if (!policy.ok) return failed(policy.message);
+
+  const outcome = cancellationOutcome({
+    status: ride.status as RideStatus,
+    acceptedAt: ride.accepted_at,
+    now: new Date(),
+    graceSeconds: policy.data.cancellationGraceSeconds,
+    feeCents: policy.data.cancellationFeeCents,
+  });
+
+  if (outcome.kind === "forbidden") {
     return failed("That ride can no longer be canceled.");
+  }
+
+  let feeChargedCents = 0;
+
+  if (outcome.kind === "fee") {
+    const charged = await chargeCancellationFee(rideId, outcome.feeCents);
+    if (charged.kind === "captured") {
+      feeChargedCents = charged.capturedCents;
+    } else if (charged.kind === "failed") {
+      // Refuse rather than cancel for free. A capture that terminally failed means the rider's
+      // card would not pay a fee they were told about — and quietly waiving it would make the
+      // confirmation they just agreed to a lie in the other direction.
+      return failed(charged.message);
+    }
+    // A `deferred` capture (no hold in place, or a retryable Stripe failure) cancels the ride
+    // anyway with nothing captured. The alternative is trapping a rider in a ride they want out
+    // of because our payment processor is having a moment.
+  } else {
+    // Free: release the whole hold. Best-effort — a rider must never be blocked from cancelling
+    // because a void failed, and Stripe releases an uncaptured authorization on its own regardless.
+    await voidRideCharge(rideId);
   }
 
   const patch: Database["public"]["Tables"]["rides"]["Update"] = {
@@ -210,7 +327,39 @@ export async function cancelRide(rideId: string): Promise<RidesResult<null>> {
   if (updateError) {
     return failed("We couldn't cancel that ride. Try again in a moment.");
   }
-  return { ok: true, data: null };
+  return { ok: true, data: { feeChargedCents } };
+}
+
+/**
+ * What cancelling right now would cost, so `/request` can say so before the rider commits.
+ *
+ * Reads rather than writes — the same rule `cancelRide()` enforces, asked in advance. A rider
+ * should never discover a fee by being charged one.
+ */
+export async function quoteCancellation(rideId: string): Promise<RidesResult<number>> {
+  const user = await requireUser();
+
+  const supabase = await createServerClient();
+  const { data: ride, error } = await supabase
+    .from("rides")
+    .select("id, status, rider_id, accepted_at")
+    .eq("id", rideId)
+    .maybeSingle();
+
+  if (error || !ride || ride.rider_id !== user.id) return failed("We couldn't find that ride.");
+
+  const policy = await getPaymentPolicy(MARKET);
+  if (!policy.ok) return failed(policy.message);
+
+  const outcome = cancellationOutcome({
+    status: ride.status as RideStatus,
+    acceptedAt: ride.accepted_at,
+    now: new Date(),
+    graceSeconds: policy.data.cancellationGraceSeconds,
+    feeCents: policy.data.cancellationFeeCents,
+  });
+
+  return { ok: true, data: outcome.kind === "fee" ? outcome.feeCents : 0 };
 }
 
 export interface OpenRideRequest {

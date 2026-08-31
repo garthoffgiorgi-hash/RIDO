@@ -40,7 +40,11 @@ function client(): Stripe | null {
   return new Stripe(key, { apiVersion: STRIPE_API_VERSION, typescript: true });
 }
 
-const NOT_CONFIGURED = "Payouts aren't configured. Set STRIPE_SECRET_KEY in .env.local.";
+// "Payments", not "payouts". This message used to reach only a driver looking at their earnings;
+// since rider charging (ADR-0017) the same missing key also fails a rider trying to book, and
+// telling them "payouts aren't configured" would be describing a part of the system they have
+// nothing to do with.
+const NOT_CONFIGURED = "Payments aren't configured. Set STRIPE_SECRET_KEY in .env.local.";
 
 /** Turns anything Stripe threw into a RIDO-shaped failure. Never lets a vendor shape escape. */
 function toFailure(error: unknown): StripeResult<never> {
@@ -244,6 +248,289 @@ export async function createTransfer(request: TransferRequest): Promise<Transfer
   }
 }
 
+// ─────────────────────────────────────────────────────────────── taking money IN (ADR-0017)
+//
+// Everything above moves money OUT to a driver. Everything below takes it in from a rider, which
+// is the half that funds the balance the transfers above draw on — until this existed, every
+// production transfer failed `balance_insufficient` because nothing had ever funded RIDO.
+
+/**
+ * Creates the Stripe Customer a rider's card and charges hang off.
+ *
+ * Called once per rider, on their first card setup. The id is persisted immediately by the caller;
+ * a Customer that exists at Stripe but is recorded nowhere is an orphan that the next attempt
+ * would duplicate.
+ */
+export async function createCustomer(email: string | null): Promise<StripeResult<string>> {
+  const stripe = client();
+  if (!stripe) return failed(NOT_CONFIGURED);
+
+  try {
+    const customer = await stripe.customers.create({
+      email: email ?? undefined,
+      metadata: { rido_role: "rider" },
+    });
+    return { ok: true, data: customer.id };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+/**
+ * A client secret the browser uses to collect and save a card, without the card touching RIDO.
+ *
+ * SetupIntent rather than PaymentIntent because saving a card and charging one are different acts:
+ * a rider adds a card at `/account` with no ride in sight, and being charged a cent to prove it
+ * works would be both surprising and, at $0, impossible.
+ *
+ * `usage: "off_session"` describes what the SAVED card must be capable of, not how it is confirmed
+ * — RIDO authorizes on-session, with the rider present, but a card saved as on-session-only would
+ * be unusable the day a future feature needs to charge without them.
+ */
+export async function createSetupIntent(customerId: string): Promise<StripeResult<string>> {
+  const stripe = client();
+  if (!stripe) return failed(NOT_CONFIGURED);
+
+  try {
+    const intent = await stripe.setupIntents.create({
+      customer: customerId,
+      usage: "off_session",
+      payment_method_types: ["card"],
+    });
+    if (!intent.client_secret) {
+      return failed("Stripe didn't return a way to collect that card. Try again in a moment.");
+    }
+    return { ok: true, data: intent.client_secret };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+/** What RIDO mirrors about a saved card so `/account` can render without asking Stripe. */
+export interface SavedCard {
+  readonly paymentMethodId: string;
+  readonly brand: string | null;
+  readonly last4: string | null;
+  readonly expMonth: number | null;
+  readonly expYear: number | null;
+}
+
+/**
+ * Reads back the card a SetupIntent saved, so its display details can be mirrored locally.
+ *
+ * Deliberately returns only brand/last4/expiry alongside the id. That trio is exactly enough for a
+ * rider to recognise their own card and nothing like enough to charge it — and what this function
+ * returns is what ends up in RIDO's database, so the narrowness is the point.
+ */
+export async function retrieveSavedCard(setupIntentId: string): Promise<StripeResult<SavedCard>> {
+  const stripe = client();
+  if (!stripe) return failed(NOT_CONFIGURED);
+
+  try {
+    const intent = await stripe.setupIntents.retrieve(setupIntentId, {
+      expand: ["payment_method"],
+    });
+
+    const method = intent.payment_method;
+    if (!method || typeof method === "string") {
+      return failed("That card isn't set up yet. Try adding it again.");
+    }
+
+    return {
+      ok: true,
+      data: {
+        paymentMethodId: method.id,
+        brand: method.card?.brand ?? null,
+        last4: method.card?.last4 ?? null,
+        expMonth: method.card?.exp_month ?? null,
+        expYear: method.card?.exp_year ?? null,
+      },
+    };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+/**
+ * Unlinks a card from its customer. Called when a rider replaces one, so a detached card cannot
+ * be authorized against by a stale reference.
+ */
+export async function detachPaymentMethod(paymentMethodId: string): Promise<StripeResult<null>> {
+  const stripe = client();
+  if (!stripe) return failed(NOT_CONFIGURED);
+
+  try {
+    await stripe.paymentMethods.detach(paymentMethodId);
+    return { ok: true, data: null };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
+export interface AuthorizationRequest {
+  readonly customerId: string;
+  readonly paymentMethodId: string;
+  /** From `holdAmountCents()` — the rider's total plus the rate card's buffer. Never computed here. */
+  readonly amountCents: number;
+  readonly rideId: string;
+  /** The `ride_charges` row id. Half of the idempotency key. */
+  readonly chargeId: string;
+  /** From `claim_ride_charge_attempt`. The other half — see ADR-0016. */
+  readonly attempt: number;
+}
+
+/**
+ * The outcome of placing a hold.
+ *
+ * `requires_action` is its own case rather than a failure: a 3DS challenge is not something going
+ * wrong, it is the bank asking the rider a question, and the rider is on screen to answer it. The
+ * client secret is what lets the browser finish that conversation.
+ */
+export type AuthorizationOutcome =
+  | { readonly ok: true; readonly paymentIntentId: string; readonly status: "authorized" }
+  | {
+      readonly ok: true;
+      readonly paymentIntentId: string;
+      readonly status: "requires_action";
+      readonly clientSecret: string;
+    }
+  | { readonly ok: false; readonly message: string; readonly retryable: boolean };
+
+/**
+ * Places a hold on the rider's saved card for a ride they are booking.
+ *
+ * **`capture_method: "manual"`** is the whole design: this authorizes now and captures at
+ * completion, so a rider's money is reserved for the trip they asked for and taken only for the
+ * trip they got. An uncaptured hold is released by Stripe on its own if a ride never finishes.
+ *
+ * **`off_session: false`** — the rider is right there, tapping the button. Confirming on-session
+ * means a 3DS challenge is a dialog they can answer rather than a failure they discover later,
+ * which removes the entire class of off-session authentication failures from this path.
+ *
+ * **`transfer_group` closes the circle.** `createTransfer` has set the same value — the ride id —
+ * since ADR-0015, under a comment saying it groups a transfer "with the charge that funded it,
+ * once rider charging exists". This is that charge.
+ *
+ * The idempotency key carries the attempt number for the reason ADR-0016 exists: a stable key
+ * makes Stripe replay its first cached response for 24 hours, so a retryable failure could never
+ * actually be retried.
+ */
+export async function authorizePayment(
+  request: AuthorizationRequest,
+): Promise<AuthorizationOutcome> {
+  const stripe = client();
+  if (!stripe) return { ok: false, message: NOT_CONFIGURED, retryable: false };
+
+  try {
+    const intent = await stripe.paymentIntents.create(
+      {
+        amount: request.amountCents,
+        currency: "usd",
+        customer: request.customerId,
+        payment_method: request.paymentMethodId,
+        capture_method: "manual",
+        confirm: true,
+        off_session: false,
+        transfer_group: request.rideId,
+        metadata: {
+          rido_ride_id: request.rideId,
+          rido_charge_id: request.chargeId,
+        },
+      },
+      { idempotencyKey: `rido_charge_${request.chargeId}_${request.attempt}` },
+    );
+
+    if (intent.status === "requires_action" || intent.status === "requires_confirmation") {
+      if (!intent.client_secret) {
+        return {
+          ok: false,
+          message: "Your bank needs to confirm this payment, but Stripe didn't say how.",
+          retryable: true,
+        };
+      }
+      return {
+        ok: true,
+        paymentIntentId: intent.id,
+        status: "requires_action",
+        clientSecret: intent.client_secret,
+      };
+    }
+
+    if (intent.status !== "requires_capture") {
+      // Any other status means the hold isn't actually in place — treat it as a failure rather
+      // than booking a ride against money that was never reserved.
+      return {
+        ok: false,
+        message: "That card couldn't be held for this ride. Try another card.",
+        retryable: false,
+      };
+    }
+
+    return { ok: true, paymentIntentId: intent.id, status: "authorized" };
+  } catch (error) {
+    const { message, retryable } = classifyError(error);
+    return { ok: false, message, retryable };
+  }
+}
+
+export interface CaptureRequest {
+  readonly paymentIntentId: string;
+  /** At or below what was authorized. Stripe refuses more, and so does the ledger's CHECK. */
+  readonly amountCents: number;
+  readonly chargeId: string;
+  readonly attempt: number;
+}
+
+export type CaptureOutcome =
+  | { readonly ok: true; readonly capturedCents: number }
+  | { readonly ok: false; readonly message: string; readonly retryable: boolean };
+
+/**
+ * Takes the money that has been on hold since the rider booked.
+ *
+ * Captures a specific amount rather than the whole hold, because the hold is deliberately larger
+ * than the fare (`holdAmountCents`) and a cancellation fee is smaller than both. What isn't
+ * captured is released back to the rider by Stripe.
+ *
+ * The returned figure is Stripe's, not the caller's request — if those ever disagree, the ledger
+ * should record what actually moved.
+ */
+export async function capturePayment(request: CaptureRequest): Promise<CaptureOutcome> {
+  const stripe = client();
+  if (!stripe) return { ok: false, message: NOT_CONFIGURED, retryable: false };
+
+  try {
+    const intent = await stripe.paymentIntents.capture(
+      request.paymentIntentId,
+      { amount_to_capture: request.amountCents },
+      { idempotencyKey: `rido_capture_${request.chargeId}_${request.attempt}` },
+    );
+    return { ok: true, capturedCents: intent.amount_received };
+  } catch (error) {
+    const { message, retryable } = classifyError(error);
+    return { ok: false, message, retryable };
+  }
+}
+
+/**
+ * Releases a hold in full, taking nothing.
+ *
+ * A free cancellation. Stripe would eventually release an uncaptured authorization on its own,
+ * but "eventually" is up to a week of a rider's credit tied up for a ride that isn't happening,
+ * which is not a thing to leave to a timeout.
+ */
+export async function cancelPayment(paymentIntentId: string): Promise<StripeResult<null>> {
+  const stripe = client();
+  if (!stripe) return failed(NOT_CONFIGURED);
+
+  try {
+    await stripe.paymentIntents.cancel(paymentIntentId);
+    return { ok: true, data: null };
+  } catch (error) {
+    return toFailure(error);
+  }
+}
+
 /**
  * Verifies a webhook's signature and returns the event, or fails.
  *
@@ -281,3 +568,4 @@ export function verifyWebhookSignature(
 /** Re-exported so callers never import the Stripe namespace to name an event. */
 export type StripeEvent = Stripe.Event;
 export type StripeAccount = Stripe.Account;
+export type StripePaymentIntent = Stripe.PaymentIntent;

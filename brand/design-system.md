@@ -140,6 +140,22 @@ online/offline toggle (availability means little while a driver pulls from a lis
 dispatch pushing to them), month-to-date earnings and tier-progress visualization, and decline
 (there's no reason yet to refuse one request in favor of scanning for another).
 
+**The hold is disclosed, never discovered.** A rider is told what will be held and what will be
+charged, before they tap — "we'll hold a little more than this while you ride, and charge $X when
+your trip ends." Honest pricing is the product (`brand-guide.md`); a rider finding a larger number
+on their statement than the one they agreed to is the incumbent behaviour RIDO is positioned
+against, and it stays that way even when the difference is only a temporary authorization.
+
+**A card form is RIDO's, even though it's Stripe's.** The one piece of third-party UI in the product
+takes the brand's tokens — Signal for focus, Ink for text, 12px radii, Plus Jakarta Sans — rather
+than arriving in Stripe's defaults. `apps/web/src/lib/payments/browser.ts` passes them through.
+
+**Cancelling late names the cost and where it goes.** Not "a fee applies": the amount, and that it
+goes to the driver for time already spent. The alternative — a rider discovering the charge
+afterwards — would be the one place the product's voice could not survive being read twice. The
+confirm reads *"Cancel and pay $X"*, and its escape reads *"Keep my ride"*, because a rider who
+changes their mind at a confirmation dialog is choosing the ride, not dismissing a modal.
+
 **A payout state is never dressed as a failure.** Money owed but not yet sent — a driver who hasn't
 linked a bank, a transfer that will be retried — is Slate, and says the earnings are recorded and
 waiting. Only a terminal refusal takes the danger token, and it is the only state that gets a Retry

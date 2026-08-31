@@ -79,12 +79,21 @@ actually receives. It also means **no money is computed in the payout path at al
 a copy of a copy of a snapshot, and `packages/pricing` is untouched by the entire feature. Full
 reasoning, and its pilot scoping: ADR-0015.
 
-## The production gap, stated plainly
+## The production gap, and what closed it
 
-Nothing charges riders yet, so RIDO's platform balance is empty and a production transfer returns
-`balance_insufficient`. That case is handled explicitly rather than generically: the driver is told
-their earnings are recorded and will be sent, the row stays `pending`, and it is retried. Test mode
-has no such limit, which is what makes the path provable before the inbound half exists.
+This section used to say that nothing charged riders, so RIDO's platform balance was empty and every
+production transfer returned `balance_insufficient` — handled explicitly rather than generically,
+with the row left `pending` and the driver told their earnings were recorded.
+
+**Rider charging (ADR-0017) is what ends that.** A completed ride now captures the rider's held fare
+*before* it transfers the driver's cut, in that order and for exactly this reason: the capture is
+what funds the balance the transfer draws on. `balance_insufficient` stops being the expected
+outcome and becomes a real signal that something is wrong.
+
+The error case stays in `errors.ts` regardless. A platform balance can still run dry — a burst of
+completions against slow-settling captures, a refund, a dispute — and when it does, the honest
+"queued, recorded, will be sent" message is still the right thing to show a driver. See
+`rider-charging.md` for the inbound half.
 
 ## Invariants this flow must preserve
 

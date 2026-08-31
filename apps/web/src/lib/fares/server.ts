@@ -46,6 +46,54 @@ export async function getActiveFareRateCard(market: string): Promise<FaresResult
   };
 }
 
+/**
+ * The payment policy on the same active card: how much headroom to hold above a quote, and what a
+ * late cancellation costs.
+ *
+ * A separate read from `getActiveFareRateCard` because these are not fare inputs — `quoteFare()`
+ * has no business knowing about authorizations, and `FareRateCard` stays the four values that
+ * decide a price. Same row, different question.
+ *
+ * `active_fare_rate_card` returns `setof fare_rate_cards`, so the columns the payment migrations
+ * added arrive here without the function needing to change.
+ */
+export interface PaymentPolicy {
+  readonly authorizationBufferBps: number;
+  readonly cancellationFeeCents: number;
+  readonly cancellationGraceSeconds: number;
+}
+
+export async function getPaymentPolicy(market: string): Promise<FaresResult<PaymentPolicy>> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc("active_fare_rate_card", { p_market: market });
+
+  if (error) {
+    return failed(`We couldn't load pricing for ${market} right now. Try again in a moment.`);
+  }
+
+  const row = data?.[0] as
+    | {
+        authorization_buffer_bps?: number;
+        cancellation_fee_cents?: number;
+        cancellation_grace_seconds?: number;
+      }
+    | undefined;
+
+  if (!row) return failed(`There's no active rate card for ${market} yet.`);
+
+  // Defaulting to zero rather than throwing: all three columns default to 0 in the schema, and 0
+  // means "this policy is off for this market" — hold exactly the quote, charge no fee. A market
+  // that has not decided should behave as though it decided nothing, not fail to take bookings.
+  return {
+    ok: true,
+    data: {
+      authorizationBufferBps: row.authorization_buffer_bps ?? 0,
+      cancellationFeeCents: row.cancellation_fee_cents ?? 0,
+      cancellationGraceSeconds: row.cancellation_grace_seconds ?? 0,
+    },
+  };
+}
+
 /** Prices a measured trip against the market's active card. Composes the two server-only reads. */
 export async function quoteRide(
   measurement: RouteMeasurement,

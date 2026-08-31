@@ -46,7 +46,52 @@ export function stripeErrorMessage(input: StripeErrorInput): StripeFailure {
   const c = (code ?? "").toLowerCase();
   const t = (type ?? "").toLowerCase();
 
-  // ---- the expected one, until rider charging exists. Ours, not theirs, and not lost.
+  // ---- the rider's card said no. Theirs to act on, and the one family of errors in this file
+  //      that a RIDER reads rather than a driver — so the voice changes with the audience: no
+  //      mention of payouts, no mention of RIDO's plumbing, just what happened and what to do.
+  //
+  //      None of these is `retryable`. That flag means "the same call would succeed unchanged",
+  //      and a declined card declines again — retrying it is how a rider collects three identical
+  //      failures instead of one. Recovery here is a NEW card, which is a new call.
+  if (c === "card_declined" || c === "do_not_honor" || c === "generic_decline") {
+    return {
+      message: "Your card was declined. Try another card.",
+      retryable: false,
+    };
+  }
+  if (c === "insufficient_funds") {
+    return {
+      message: "Your card doesn't have enough available for this ride. Try another card.",
+      retryable: false,
+    };
+  }
+  if (c === "expired_card") {
+    return { message: "That card has expired. Add a current one to book.", retryable: false };
+  }
+  if (c === "incorrect_cvc" || c === "invalid_cvc") {
+    return {
+      message: "That card's security code wasn't right. Check it and try again.",
+      retryable: false,
+    };
+  }
+  if (c === "authentication_required") {
+    // Distinct from a decline: the bank is asking a question, not refusing. RIDO authorizes
+    // on-session precisely so the rider is present to answer it, which makes this message a
+    // fallback for the case where that conversation still didn't complete.
+    return {
+      message: "Your bank needs to confirm this payment. Try booking again to approve it.",
+      retryable: false,
+    };
+  }
+  if (c === "payment_intent_authentication_failure") {
+    return {
+      message: "That confirmation didn't go through. Try booking again, or use another card.",
+      retryable: false,
+    };
+  }
+
+  // ---- the expected one on the OUTBOUND side, until rider charging is live in production.
+  //      Ours, not theirs, and not lost.
   if (c === "balance_insufficient") {
     return {
       message:
@@ -69,7 +114,7 @@ export function stripeErrorMessage(input: StripeErrorInput): StripeFailure {
   //      rather than implying they should try something.
   if (t === "stripeauthenticationerror" || c === "api_key_expired") {
     return {
-      message: "Payouts aren't configured. Check STRIPE_SECRET_KEY in .env.local.",
+      message: "Payments aren't configured. Check STRIPE_SECRET_KEY in .env.local.",
       retryable: false,
     };
   }

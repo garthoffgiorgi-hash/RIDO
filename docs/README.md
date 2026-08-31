@@ -30,6 +30,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Who may accept a ride, the open-pool RLS policy, why no lock/CAS is needed | `decisions/0013-driver-accepts-one-row-one-update.md` |
 | Why the app forwards the driver's JWT to `complete-ride` rather than re-orchestrating it, `started_at`/`duration_seconds` | `decisions/0014-app-calls-complete-ride.md` |
 | How a driver gets paid: the ledger, per-ride transfers, Connect onboarding | `architecture/payouts.md` |
+| How a rider is charged: the hold, the capture, saved cards, cancellation fees | `architecture/rider-charging.md` |
 | **Who absorbs card processing** (RIDO does, pilot-scoped), and why payouts are per-ride | `decisions/0015-connect-payouts-per-ride.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
@@ -62,6 +63,7 @@ docs/
 |---|---|---|---|
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride rate? | The entire financial model | Broker |
 | 2 | Prop 22 earnings floor — who owes what, and how the two-week aggregate lands? ("drivers set fares" is resolved: they don't — ADR-0009) | Driver classification, payout design | CA attorney |
+| 5 | Should RIDO keep a share of the cancellation fee as a platform fee? Today the driver keeps 100% (ADR-0018) — but RIDO absorbs Stripe's processing on every authorization, and this is the obvious place to recover it | Cancellation economics; whether `rides_commission_present_iff_completed` has to bend | Giorgi |
 
 Answering one of these produces an ADR. Until then it stays here, visible.
 

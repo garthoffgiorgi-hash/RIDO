@@ -13,7 +13,7 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — six core tables
+## Schema — eight core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
@@ -28,7 +28,7 @@ The flat-fee relationship (Stripe-backed). Drives pilot vs steady.
 
 ### `rides`
 One row per ride. **Commission is snapshotted here at completion — never recomputed.**
-`id` · `rider_id` → `auth.users` directly (no `riders` table exists) · `driver_id` → drivers, **nullable** while `status` is `'requested'` or `'canceled'` · `status` (`requested`|`accepted`|`in_progress`|`completed`|`canceled`) · `fare_cents` · **`commission_rate_bps`** (snapshot, basis points) · **`commission_cents`** (snapshot) · **`driver_payout_cents`** (snapshot) · `pickup_lat/lng` · `dropoff_lat/lng` · `pickup_address` · `dropoff_address` · `requested_at` · `accepted_at` · `started_at` · `completed_at` · `canceled_at` · `created_at` · `distance_meters` · `duration_seconds` · generated `pickup_geog`/`dropoff_geog`. `CHECK` constraints enforce the commission columns exist iff `status='completed'`; `commission_cents + driver_payout_cents = fare_cents` exactly; `driver_id` is set whenever `status` is anything but `'requested'`/`'canceled'` (`rides_driver_present_unless_pending`); and (new, ADR-0014) `started_at` is set whenever `status = 'in_progress'` (`rides_started_at_present_iff_in_progress`) — but never required at completion, since a ride may still complete straight from `'accepted'`. A partial unique index (`rides_one_active_per_rider`) permits at most one live ride per rider; its driver-side mirror (`rides_one_active_per_driver`, total rather than partial-on-nullable — see ADR-0013) permits at most one `'accepted'`/`'in_progress'` ride per driver. A trigger blocks any rewrite of the three commission columns once set. `accepted_at` is written by the accept path's conditional `UPDATE` (ADR-0013); `started_at` by the start-trip path's, the same shape (ADR-0014).
+`id` · `rider_id` → `auth.users` directly (no `riders` table exists) · `driver_id` → drivers, **nullable** while `status` is `'requested'` or `'canceled'` · `status` (`requested`|`accepted`|`in_progress`|`completed`|`canceled`) · `fare_cents` (commissionable) · **`rider_total_cents`** (what the rider is CHARGED — fare plus non-commissionable pass-throughs, `>= fare_cents`, nullable for pre-ADR-0017 rows; commission still splits `fare_cents` alone, so `rides_commission_sums_to_fare` is untouched) · **`commission_rate_bps`** (snapshot, basis points) · **`commission_cents`** (snapshot) · **`driver_payout_cents`** (snapshot) · `pickup_lat/lng` · `dropoff_lat/lng` · `pickup_address` · `dropoff_address` · `requested_at` · `accepted_at` · `started_at` · `completed_at` · `canceled_at` · `created_at` · `distance_meters` · `duration_seconds` · generated `pickup_geog`/`dropoff_geog`. `CHECK` constraints enforce the commission columns exist iff `status='completed'`; `commission_cents + driver_payout_cents = fare_cents` exactly; `driver_id` is set whenever `status` is anything but `'requested'`/`'canceled'` (`rides_driver_present_unless_pending`); and (new, ADR-0014) `started_at` is set whenever `status = 'in_progress'` (`rides_started_at_present_iff_in_progress`) — but never required at completion, since a ride may still complete straight from `'accepted'`. A partial unique index (`rides_one_active_per_rider`) permits at most one live ride per rider; its driver-side mirror (`rides_one_active_per_driver`, total rather than partial-on-nullable — see ADR-0013) permits at most one `'accepted'`/`'in_progress'` ride per driver. A trigger blocks any rewrite of the three commission columns once set. `accepted_at` is written by the accept path's conditional `UPDATE` (ADR-0013); `started_at` by the start-trip path's, the same shape (ADR-0014).
 
 **What the location and trip columns hold** is ADR-0011, not a matter of taste. The four lifecycle timestamps are RIDO's own clock and carry no vendor restriction — they are the whole temporal half of a demand heatmap, available from the first completed ride. `pickup_address`/`dropoff_address` hold the address line the rider saw; the lat/lng pair stays **null through the pilot** because Search Box results may not be stored and permanent geocoding is deliberately switched off, so the addresses are the input to a later backfill. `duration_seconds` is `completed_at − started_at`, derived by a trigger (`set_ride_duration`) on completion — `null` when `started_at` never was, which is legal (a ride may complete straight from `'accepted'`). `distance_meters` needs a GPS trace and stays null until the driver app exists — it is never the routed estimate. See `../decisions/0011-what-a-completed-ride-records.md`.
 **RLS:** a rider reads their own rides, a driver reads rides where they're the driver, and (new) an **active** driver also reads every `'requested'` ride with no driver yet — the open pool a dispatch board needs (`rides_select_open_requests_as_active_driver`, PERMISSIVE, ORs with the other two). Still no `INSERT`/`UPDATE` grant for `authenticated` at all, deliberately — both the rider booking flow and the driver accept flow write through the service role instead (`../decisions/0012-rider-books-server-owns-the-write.md`, `../decisions/0013-driver-accepts-one-row-one-update.md`), so there was never a real transition to write a policy for.
@@ -45,6 +45,19 @@ What RIDO owes a driver, and whether it has been sent — the ledger `driver_pay
 **Written by trigger, not by application code:** `queue_driver_payout` fires on the same `→ completed` transition `bump_monthly_stats` watches, so the debt is recorded *inside* the completion transaction — a ride is completed and owed for atomically, or neither. A zero-payout ride is skipped rather than written.
 **RLS:** a driver reads only their own rows, and writes none — matching `driver_monthly_stats` and for the same reason: a driver who could mark unsent money `paid`, or paid money `pending`, is a cash-integrity hole.
 
+### `ride_charges`
+What RIDO has held on a rider's card and what it has taken — the inbound mirror of `driver_payouts`. Full flow: `rider-charging.md`; why: `../decisions/0017-rider-charging.md`.
+`id` · `ride_id` → rides, **restrict** · `rider_id` → `auth.users`, **restrict** · `authorized_cents` (`> 0` — Stripe rejects a zero authorization) · `captured_cents` (null until capture, never above `authorized_cents`) · `status` (`authorizing`|`authorized`|`captured`|`voided`|`failed`) · `stripe_payment_intent_id` · `failure_reason` · `attempt_count`/`settling`/`settling_since` (ADR-0016's claim, applied from the start) · `created_at` · `updated_at`.
+**Deliberately no `kind` column.** A cancellation fee is a partial capture of the *same* hold a fare would have used, so what a captured row was for depends only on how the ride ended — and `rides.status` already says that, in one place, with nothing to drift.
+**Constraints:** `ride_charges_captured_iff_settled` — a `captured` row carries both its amount and its PaymentIntent id, and a non-captured one claims neither. `ride_charges_one_live_per_ride` is partial on the unsettled statuses, so a `failed` authorization can be superseded by a new row ("a correction is a new row") while two live holds for one ride stay impossible.
+**RLS:** a rider reads their own charges and writes none — a rider who could mark a hold `voided` would have a free ride.
+
+### `rider_payment_profiles`
+Who a rider is to Stripe, and which card they saved. A table rather than a column because there is no `riders` table — `rides.rider_id` points at `auth.users`, which is Supabase's.
+`rider_id` (PK) → `auth.users`, **cascade** (a pointer and a display cache, not a financial record — the money lives in `ride_charges`, which restricts) · `stripe_customer_id` (unique) · `default_payment_method_id` (null is what makes `requestRide` return `needs_card`) · `card_brand` · `card_last4` (exactly 4) · `card_exp_month`/`card_exp_year` · `created_at` · `updated_at`.
+**The card number is never here.** Stripe Elements collects it in the browser and returns a PaymentMethod reference; brand/last4/expiry exist only so a rider recognises their own card without a round trip.
+**RLS:** read own, write none. Every column is Stripe's word about an external system.
+
 ### `commission_tiers`
 Config — the graduated rates, editable without deploy.
 `id` · `tier_order` · `lower_bound_cents` · `upper_bound_cents` (null = ∞) · `rate_bps` · `active` (bool) · `effective_from`. Unique on (`tier_order`, `effective_from`) — required for `supabase/seed/commission_tiers.sql`'s `ON CONFLICT` to be valid. Seed: (0–100000 → 2000 bps), (100000–300000 → 1200 bps), (300000–null → 800 bps).
@@ -57,6 +70,14 @@ Config — the graduated rates, editable without deploy.
 the fix for a race a naive rollup trigger alone doesn't cover, see `ride-completion.md`.
 `bump_monthly_stats()` — the rollup trigger. `set_ride_duration()` — derives `duration_seconds`
 from `started_at`/`completed_at` on the same completion transition, when both exist (ADR-0014).
+`queue_cancellation_payout()` — the cancellation-side mirror, firing on the transition into
+`'canceled'`. If a fee was captured, the driver gets it **in full** (ADR-0018; provisional — see
+`README.md`'s open questions). The fee must be captured *before* the status flips, since this reads it.
+
+`claim_ride_charge_attempt()` / `release_ride_charge_attempt()` — ADR-0016's exclusive claim,
+mirrored for the inbound ledger rather than generalised: a shared version would need a table name
+as a parameter, and dynamic SQL in a money path is not a trade worth nine saved lines.
+
 `queue_driver_payout()` — writes the `driver_payouts` row on that same transition, so a completed
 ride and the debt it creates are one atomic act (ADR-0015). `set_updated_at()` — generic, reused
 wherever a table needs a maintained `updated_at`. `prevent_commission_rewrite()` — the write-once

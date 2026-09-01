@@ -428,6 +428,10 @@ export async function authorizePayment(
         currency: "usd",
         customer: request.customerId,
         payment_method: request.paymentMethodId,
+        // Pinned, not left to the Dashboard's automatic-payment-methods list — RIDO is card-only
+        // (ADR-0017), and an enabled redirect-based method there makes Stripe demand a
+        // `return_url` this on-session flow has no page to redirect back to.
+        payment_method_types: ["card"],
         capture_method: "manual",
         confirm: true,
         off_session: false,

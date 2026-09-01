@@ -110,6 +110,66 @@ export type Database = {
           },
         ]
       }
+      driver_payouts: {
+        Row: {
+          amount_cents: number
+          attempt_count: number
+          created_at: string
+          driver_id: string
+          failure_reason: string | null
+          id: string
+          ride_id: string | null
+          settling: boolean
+          settling_since: string | null
+          status: string
+          stripe_transfer_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount_cents: number
+          attempt_count?: number
+          created_at?: string
+          driver_id: string
+          failure_reason?: string | null
+          id?: string
+          ride_id?: string | null
+          settling?: boolean
+          settling_since?: string | null
+          status?: string
+          stripe_transfer_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount_cents?: number
+          attempt_count?: number
+          created_at?: string
+          driver_id?: string
+          failure_reason?: string | null
+          id?: string
+          ride_id?: string | null
+          settling?: boolean
+          settling_since?: string | null
+          status?: string
+          stripe_transfer_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_payouts_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "driver_payouts_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: false
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drivers: {
         Row: {
           auth_user_id: string
@@ -122,6 +182,8 @@ export type Database = {
           phone: string | null
           status: string
           stripe_account_id: string | null
+          stripe_details_submitted: boolean
+          stripe_payouts_enabled: boolean
           training_completed: boolean
           updated_at: string
           vehicle_inspection_date: string | null
@@ -142,6 +204,8 @@ export type Database = {
           phone?: string | null
           status?: string
           stripe_account_id?: string | null
+          stripe_details_submitted?: boolean
+          stripe_payouts_enabled?: boolean
           training_completed?: boolean
           updated_at?: string
           vehicle_inspection_date?: string | null
@@ -162,6 +226,8 @@ export type Database = {
           phone?: string | null
           status?: string
           stripe_account_id?: string | null
+          stripe_details_submitted?: boolean
+          stripe_payouts_enabled?: boolean
           training_completed?: boolean
           updated_at?: string
           vehicle_inspection_date?: string | null
@@ -176,7 +242,10 @@ export type Database = {
       fare_rate_cards: {
         Row: {
           active: boolean
+          authorization_buffer_bps: number
           base_cents: number
+          cancellation_fee_cents: number
+          cancellation_grace_seconds: number
           effective_from: string
           id: string
           market: string
@@ -186,7 +255,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          authorization_buffer_bps?: number
           base_cents: number
+          cancellation_fee_cents?: number
+          cancellation_grace_seconds?: number
           effective_from: string
           id?: string
           market: string
@@ -196,13 +268,108 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          authorization_buffer_bps?: number
           base_cents?: number
+          cancellation_fee_cents?: number
+          cancellation_grace_seconds?: number
           effective_from?: string
           id?: string
           market?: string
           minimum_fare_cents?: number
           per_mile_cents?: number
           per_minute_cents?: number
+        }
+        Relationships: []
+      }
+      ride_charges: {
+        Row: {
+          attempt_count: number
+          authorized_cents: number
+          captured_cents: number | null
+          created_at: string
+          failure_reason: string | null
+          id: string
+          ride_id: string
+          rider_id: string
+          settling: boolean
+          settling_since: string | null
+          status: string
+          stripe_payment_intent_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_count?: number
+          authorized_cents: number
+          captured_cents?: number | null
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          ride_id: string
+          rider_id: string
+          settling?: boolean
+          settling_since?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_count?: number
+          authorized_cents?: number
+          captured_cents?: number | null
+          created_at?: string
+          failure_reason?: string | null
+          id?: string
+          ride_id?: string
+          rider_id?: string
+          settling?: boolean
+          settling_since?: string | null
+          status?: string
+          stripe_payment_intent_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_charges_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: false
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rider_payment_profiles: {
+        Row: {
+          card_brand: string | null
+          card_exp_month: number | null
+          card_exp_year: number | null
+          card_last4: string | null
+          created_at: string
+          default_payment_method_id: string | null
+          rider_id: string
+          stripe_customer_id: string
+          updated_at: string
+        }
+        Insert: {
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          created_at?: string
+          default_payment_method_id?: string | null
+          rider_id: string
+          stripe_customer_id: string
+          updated_at?: string
+        }
+        Update: {
+          card_brand?: string | null
+          card_exp_month?: number | null
+          card_exp_year?: number | null
+          card_last4?: string | null
+          created_at?: string
+          default_payment_method_id?: string | null
+          rider_id?: string
+          stripe_customer_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -230,6 +397,7 @@ export type Database = {
           pickup_lng: number | null
           requested_at: string
           rider_id: string
+          rider_total_cents: number | null
           started_at: string | null
           status: string
         }
@@ -256,6 +424,7 @@ export type Database = {
           pickup_lng?: number | null
           requested_at?: string
           rider_id: string
+          rider_total_cents?: number | null
           started_at?: string | null
           status?: string
         }
@@ -282,6 +451,7 @@ export type Database = {
           pickup_lng?: number | null
           requested_at?: string
           rider_id?: string
+          rider_total_cents?: number | null
           started_at?: string | null
           status?: string
         }
@@ -369,7 +539,10 @@ export type Database = {
         Args: { p_market: string }
         Returns: {
           active: boolean
+          authorization_buffer_bps: number
           base_cents: number
+          cancellation_fee_cents: number
+          cancellation_grace_seconds: number
           effective_from: string
           id: string
           market: string
@@ -401,12 +574,28 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      claim_driver_payout_attempt: {
+        Args: { p_payout_id: string }
+        Returns: number
+      }
+      claim_ride_charge_attempt: {
+        Args: { p_charge_id: string }
+        Returns: number
+      }
       driver_month_to_date: {
         Args: { p_driver_id: string }
         Returns: {
           gross_fare_cents: number
           year_month: string
         }[]
+      }
+      release_driver_payout_attempt: {
+        Args: { p_payout_id: string }
+        Returns: undefined
+      }
+      release_ride_charge_attempt: {
+        Args: { p_charge_id: string }
+        Returns: undefined
       }
       reserve_driver_month: {
         Args: { p_completed_at: string; p_driver_id: string }

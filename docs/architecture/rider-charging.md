@@ -93,7 +93,7 @@ day repricing-from-actuals lands, every hold already in flight must already have
 
 ## Testing this against real Stripe
 
-Two things cost real time to discover, so they are written down.
+Four things cost real time to discover, so they are written down.
 
 **Funding a test platform balance.** The dashboard's **"Add funds" button does not credit a balance
 that transfers can draw on.** Create a real test charge instead:
@@ -108,6 +108,27 @@ that keeps failing while the dashboard shows thousands available.
 **Use the app's own key.** The Stripe CLI authenticates separately from `.env.local`, so
 `stripe charges create` can fund a *different* account than the one the app charges against. Check
 with `curl https://api.stripe.com/v1/account -u sk_test_...:` and compare the account id.
+
+**`supabase db push` never runs a seed, on a hosted project.** `authorization_buffer_bps`,
+`cancellation_fee_cents` and `cancellation_grace_seconds` all land as `0` from their migration —
+"policy off" is what a zero means, on purpose, so a market that hasn't decided still takes bookings
+(`getPaymentPolicy`). Only `supabase/seed/fare_rate_cards.sql`'s `on conflict ... do update` sets
+the real values, and `[db.seed]` in `supabase/config.toml` fires **only** on a local
+`supabase db reset` — never against a linked remote project. The symptom is exactly what it looks
+like: a hold with no buffer above the quote, and a late cancellation that stays free. Paste the
+seed file into the Supabase Studio SQL Editor (or `psql "$SUPABASE_DB_URL" -f
+supabase/seed/fare_rate_cards.sql`) to apply it — safe to re-run, since it only ever touches those
+three columns on the row it already knows about.
+
+**A capture funds Stripe's *pending* balance first, same delay as live mode.** A `4242…` capture is
+real and correct the moment it happens — Stripe still won't let a transfer draw on it until the
+normal payout-settlement window elapses, in test mode exactly as in live. That is not
+`balance_insufficient` from an empty balance (the case `tok_bypassPending` above exists for); it's
+`balance_insufficient` from a balance that is real but not yet available, and nothing here should
+"fix" it. `settlePendingPayoutsForDriver()` already retries every unpaid payout on each `/drive`
+load — ADR-0016's claim makes that safe to call as often as the page loads — so the transfer
+succeeds on its own the moment Stripe clears the funds; the ledger stays exactly as owed in the
+meantime.
 
 ## Invariants this flow must preserve
 

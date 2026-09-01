@@ -125,8 +125,11 @@ export function stripeErrorMessage(input: StripeErrorInput): StripeFailure {
     };
   }
   if (t === "stripeinvalidrequesterror") {
+    // Shared by both directions (a driver's transfer, a rider's authorization or capture), so
+    // this can't name either one — the specific, audience-aware cases above already peeled off
+    // everything that can.
     return {
-      message: withDetail("That payout request wasn't valid. This one's ours to fix.", raw),
+      message: withDetail("That request wasn't valid. This one's ours to fix.", raw),
       retryable: false,
     };
   }

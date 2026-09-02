@@ -4,7 +4,8 @@ Migrations are the **only** source of truth for schema. Never change the databas
 never edit a migration that has been applied — add a new one.
 
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
-`ride_charges` · `rider_payment_profiles` · `commission_tiers` · `fare_rate_cards`. Field-level
+`ride_charges` · `rider_payment_profiles` · `ride_declines` · `commission_tiers` ·
+`fare_rate_cards`. Field-level
 detail: `docs/architecture/data-model.md`. Completion flow:
 `docs/architecture/ride-completion.md`. Payout flow: `docs/architecture/payouts.md`. Charge flow:
 `docs/architecture/rider-charging.md`.
@@ -43,13 +44,17 @@ detail: `docs/architecture/data-model.md`. Completion flow:
 
 **On by default, on every table. A new table without a policy is a leak, and it will ship.**
 
-- Drivers read their own `drivers`, `subscriptions`, `driver_monthly_stats` and `driver_payouts`
-  rows, and can update a narrow, explicitly column-granted subset of `drivers` (contact and vehicle
-  info — never `status`, a compliance column, or any of the three `stripe_*` columns, which are
-  Stripe's word about an external system). The other three tables are **read-only even to their own
-  driver** — all written exclusively by the service role (Stripe webhooks; the rollup and payout
-  triggers), since a driver-writable fee state, MTD figure, or payout status is a direct
-  revenue/commission/cash-integrity hole, not a permissions nuance.
+- Drivers read their own `drivers`, `subscriptions`, `driver_monthly_stats`, `driver_payouts` and
+  `ride_declines` rows, and can update a narrow, explicitly column-granted subset of `drivers`
+  (contact and vehicle info, plus `accepting_rides` — never `status`, a compliance column, or any of
+  the three `stripe_*` columns, which are Stripe's word about an external system). **The membership
+  rule is one writer forever → column grant; possibly-many writers → service role** (ADR-0019): only
+  a driver can assert their own willingness to work, so it is granted; a decline has plausible
+  non-driver writers later, so `ride_declines` is service-role-written. A table-level
+  `grant update on drivers to authenticated` would silently erase all of this. The other four tables
+  are **read-only even to their own driver** — written exclusively by the service role (Stripe
+  webhooks; the rollup and payout triggers), since a driver-writable fee state, MTD figure, or
+  payout status is a direct revenue/commission/cash-integrity hole.
 - Riders read only their own `rides`; drivers read only rides where they're the driver, **plus**
   (new, ADR-0013) any active driver reads every unassigned `'requested'` ride — the open pool a
   dispatch board needs. That policy is PERMISSIVE, ORing with the two ownership policies rather
@@ -103,12 +108,10 @@ detail: `docs/architecture/data-model.md`. Completion flow:
   import path @rido/pricing not prefixed with / or ./ or ../". Confirmed on `complete-ride`'s
   first real deploy (ADR-0005). Copy the `[functions.complete-ride]` block for the next function.
 - **`rides` stores addresses, not coordinates, through the pilot.** `pickup_address`/
-  `dropoff_address` hold what the rider saw; `pickup_lat/lng` stay null because Search Box results
-  may not be stored and permanent geocoding is deliberately off. The addresses are the input to a
-  later backfill, which is cheaper than paying per booking. `distance_meters` is the distance
-  actually driven and `duration_seconds` is `completed_at - started_at`, derived by a trigger
-  (`set_ride_duration`, ADR-0014) rather than computed at write time — neither is ever the routed
-  estimate. (ADR-0011)
+  `dropoff_address` hold what the rider saw; `pickup_lat/lng` stay null (Search Box results may not
+  be stored, permanent geocoding is off) and the addresses feed a later backfill. `distance_meters`
+  is the distance actually driven, `duration_seconds` is trigger-derived from `completed_at -
+  started_at` (`set_ride_duration`, ADR-0014) — neither is ever the routed estimate. (ADR-0011)
 - **`rides.driver_id` is nullable while `status` is `'requested'` or `'canceled'`**, enforced by
   `rides_driver_present_unless_pending` — every other status still requires one, in the
   database, not by convention. `rides_one_active_per_rider` (a partial unique index) is what
@@ -190,9 +193,7 @@ losing by luck — even though accept needs no lock of its own to get there (ADR
 `settle()` calls racing one payout, asserting the loser blocks and gets `null`, never a second
 attempt number. Run these manually against a real instance; none is part of `test db`.
 
-**`concurrent-apply-ride-commission.sh` is retired.** It raced two *different* rides for one
-driver to completion — but `rides_one_active_per_driver` (ADR-0013) makes that setup illegal now:
-a driver holds at most one `'accepted'`/`'in_progress'` ride at a time, so two of their rides can
-never both be completable at once through any real code path. `reserve_driver_month()`'s lock
-stays regardless — it becomes load-bearing again the moment a future feature relaxes that
-constraint (driver ride queuing, say). Full account: `docs/architecture/ride-completion.md`.
+**`concurrent-apply-ride-commission.sh` is retired** — `rides_one_active_per_driver` (ADR-0013)
+makes its two-rides-one-driver setup illegal through any real code path. `reserve_driver_month()`'s
+lock stays regardless, becoming load-bearing again if that constraint ever relaxes (driver ride
+queuing, say). Full account: `docs/architecture/ride-completion.md`.

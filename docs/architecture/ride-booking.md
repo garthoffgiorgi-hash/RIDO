@@ -74,14 +74,18 @@ raw database error.
 
 1. **List the open pool.** `listOpenRequests(driver)` reads every `'requested'`, unassigned ride
    through the RLS-scoped client — `rides_select_open_requests_as_active_driver` (ADR-0013) is
-   what makes this return anything at all, and only for an active driver. Each candidate is priced
+   what makes this return anything at all, and only for an active driver. Rides this driver has
+   declined are then filtered out (ADR-0019) — a second read against `ride_declines`, scoped to the
+   candidate ids rather than the driver's whole decline history, applied *before* pricing so nothing
+   is priced only to be dropped. Each remaining candidate is priced
    with what THIS driver would keep: `commissionForRide` fed the active tiers
    (`active_commission_tiers()`) and this driver's month-to-date gross (`driver_monthly_stats`,
    read directly, not the service-role-only `driver_month_to_date()` RPC), read **once** and
    applied to every candidate — they're alternatives, not a sequence.
 2. **Accept.** `acceptRide(rideId)` resolves the caller's driver profile, pre-flight-checks it with
-   `canAcceptRide()` (`apps/web/src/lib/rides/accept.ts`, pure — compliance before ride state,
-   mirroring `supabase/functions/complete-ride/core.ts`'s ordering), then issues one conditional `UPDATE … WHERE status =
+   `canAcceptRide()` (`apps/web/src/lib/rides/accept.ts`, pure — **properties of the caller before
+   properties of the subject**: compliance, then availability, then ride state, mirroring
+   `supabase/functions/complete-ride/core.ts`'s ordering), then issues one conditional `UPDATE … WHERE status =
    'requested' AND driver_id IS NULL` through the service role. That `WHERE` clause, not the
    pre-flight check, is what actually decides a race between two drivers — see ADR-0013 for why
    this needs no lock and no compare-and-swap the way completion does.
@@ -96,6 +100,20 @@ raw database error.
 4. **Complete it.** Handed off to `ride-completion.md` — this is the one write in the whole
    lifecycle that isn't a plain conditional `UPDATE` through the service role. ADR-0014.
 
+**Or decline it, or stop taking work altogether (ADR-0019).** `declineRide(rideId)` writes a
+`ride_declines` row through the service role — `on conflict do nothing`, so a re-decline is a no-op
+— and that ride never appears in this driver's pool again. It stays in the pool for everyone else;
+nothing about the ride row changes, which is why declining one another driver is simultaneously
+accepting is inert rather than an error worth guarding.
+
+`setAcceptingRides(accepting)` (`apps/web/src/lib/drivers/server.ts`) flips `drivers.accepting_rides`
+— the app's first write to that table, and the first use of the column-level UPDATE grant that has
+been sitting on it since the first migration. It goes through the **RLS-scoped** client, not the
+service role, so the database itself guarantees a driver can only ever flip their own flag. An
+offline driver still sees the whole board; only `canAcceptRide()` refuses. Availability gates taking
+new work and never finishing committed work, so `canStartTrip()` and the completion path do not
+consult it.
+
 `getDriverActiveRide(driver)` reads the signed-in driver's own live ride, if any — an RLS read
 (`rides_select_own_as_driver` already covers it) that `/drive` didn't have until now. Before it
 existed, accepting a ride only lived in the accepting browser tab's local state; reloading lost it
@@ -105,9 +123,11 @@ read, not an optimistic one. Priced the same live way `listOpenRequests` prices 
 
 `/drive` shows this current-ride read when it's non-null, and the open pool only when it's
 `null` — `rides_one_active_per_driver` is what makes those mutually exclusive, so `/drive` doesn't
-even call `listOpenRequests` while a driver holds a live ride. No realtime either way: a driver
-sees a request disappear (someone else took it) or the pool refresh only on reload or their next
-accept attempt.
+even call `listOpenRequests` while a driver holds a live ride. **The availability toggle sits
+outside both**, right below the compliance card: a driver mid-ride has no pool panel, and going
+offline to signal "this is my last one" has to stay reachable. No realtime either way: a driver
+sees a request disappear (someone else took it) or the pool refresh only on reload, their next
+accept attempt, or a toggle.
 
 ## One ride at a time, enforced by the database — both sides
 

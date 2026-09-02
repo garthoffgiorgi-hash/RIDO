@@ -43,3 +43,15 @@ What this costs, what it rules out, what now has to be true.
 | [0013](0013-driver-accepts-one-row-one-update.md) | Driver accepts: one row, one conditional UPDATE | Accepted |
 | [0014](0014-app-calls-complete-ride.md) | The app calls `complete-ride`; it doesn't re-orchestrate it | Accepted |
 | [0015](0015-connect-payouts-per-ride.md) | Connect payouts, per ride, against a ledger (RIDO absorbs processing) | Accepted |
+| [0016](0016-payout-attempt-claim.md) | A payout retry needs a claim, not just a stable idempotency key | Accepted |
+| [0017](0017-rider-charging.md) | Hold at request, capture at completion | Accepted |
+| [0018](0018-late-cancellation-fee.md) | A rider may cancel late, for a fee the driver keeps | Accepted |
+| [0020](0020-realtime-ride-status.md) | A realtime event is a notification, not a data channel | Accepted |
+
+**0019 is claimed and lands with the driver-queue branch** (online/offline and decline). Numbers are
+permanent and assigned when an ADR is written, not when it merges, so the gap here is a branch that
+has not landed yet — not a missing decision. Whoever merges that branch adds its row.
+
+This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
+rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot
+catch this one — it verifies that references resolve, not that a list is complete.

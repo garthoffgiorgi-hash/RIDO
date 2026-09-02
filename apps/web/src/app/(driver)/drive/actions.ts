@@ -1,6 +1,8 @@
 "use server";
 
 import { headers } from "next/headers";
+import { requireUser } from "@/lib/auth/server";
+import { getOwnDriverProfile } from "@/lib/drivers/server";
 import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
 import * as rides from "@/lib/rides/server";
@@ -8,9 +10,10 @@ import * as rides from "@/lib/rides/server";
 /**
  * Thin Server Action bridge over `src/lib/rides/server.ts` and `src/lib/payouts/server.ts`,
  * matching `(rider)/request/actions.ts`'s pattern — both carry `import "server-only"` and neither
- * is itself `"use server"`, so a Client Component can't call them directly. `listOpenRequests`,
- * `getDriverActiveRide` and `getPayoutSummary` don't need a wrapper here: `drive/page.tsx` is a
- * Server Component and reads them directly.
+ * is itself `"use server"`, so a Client Component can't call them directly. `listOpenRequests` and
+ * `getPayoutSummary` don't need a wrapper here: `drive/page.tsx` is a Server Component and reads
+ * them directly. `getDriverActiveRide` is read that way *and* wrapped, because realtime
+ * (`readDriverActiveRide` below) has to re-read it from the browser after the first render.
  */
 export async function acceptRide(rideId: string) {
   return rides.acceptRide(rideId);
@@ -77,4 +80,31 @@ export async function startConnectOnboarding() {
 
 export async function retryPayout(payoutId: string) {
   return payouts.retryPayout(payoutId);
+}
+
+/**
+ * Re-reads the signed-in driver's own live ride — what a realtime event triggers on `/drive`
+ * (ADR-0020). The event says "this ride moved" and its payload is discarded; this is where the
+ * truth comes from.
+ *
+ * **This read cannot be replaced by the event payload, and that is the whole reason the design is
+ * shaped this way.** `DriverActiveRide.driverPayoutCents` and `.commissionRateBps` do not exist on
+ * an `'accepted'`/`'in_progress'` `rides` row at all — `rides_commission_present_iff_completed`
+ * guarantees those columns are null until completion, and `getDriverActiveRide()` computes both
+ * live through `commissionForRide()` against the active tiers and this driver's month-to-date
+ * position. A postgres_changes payload physically cannot carry them, and root invariant 5 forbids
+ * deriving them any other way.
+ *
+ * `null` means the ride is gone from under the driver — completed by them a moment ago, or
+ * cancelled by the rider. Swallows a driver-profile miss and a read failure into `null` rather than
+ * surfacing either: this runs on a socket event with no button to re-enable, and `/drive`'s own
+ * server render is what reports a real problem.
+ */
+export async function readDriverActiveRide() {
+  const user = await requireUser();
+  const driver = await getOwnDriverProfile(user);
+  if (!driver) return null;
+
+  const result = await rides.getDriverActiveRide(driver);
+  return result.ok ? result.data : null;
 }

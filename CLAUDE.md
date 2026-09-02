@@ -22,11 +22,17 @@ it to the driver in full (ADR-0018). Proven end to end, not just in principle: a
 buffered hold, a 3DS challenge, a decline, a captured fare with a real driver transfer following it,
 and a captured cancellation fee with its own real transfer.
 
+**Live-ride surfaces are realtime** (ADR-0020): a rider's sheet and a driver's current-ride card
+move on their own over a Supabase `postgres_changes` subscription. The event is a *notification* —
+its payload is discarded and the client refetches through the same server read a page load uses,
+because the driver's payout figure is computed live and does not exist on the row at all.
+
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
 whole pilot), the native driver app, dispatch/proximity matching, driver decline, an
-online/offline toggle, and anything realtime — a rider or driver still only learns a ride moved on
-when they reload. None of these block the business model the way an empty platform balance did;
-they're the day-to-day usability gaps left once the money itself moves correctly both ways.
+online/offline toggle, and realtime on the driver's *open pool* — a whole-table subscription with
+its own authorization question, deferred in ADR-0020 rather than skipped. None of these block the
+business model the way an empty platform balance did; they're the day-to-day usability gaps left
+once the money itself moves correctly both ways.
 
 **Partially built:**
 

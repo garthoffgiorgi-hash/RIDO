@@ -8,17 +8,25 @@ same commit that proves it wrong.***
 
 ## TL;DR
 
-**The outbound half of the money loop is built.** `requested → accepted → in_progress → completed`
-runs end to end (a rider books at `/request`, a driver accepts, starts and completes at `/drive`,
-which calls the `complete-ride` Edge Function), and completion now also **records a debt and pays
-it**: a `driver_payouts` ledger row written by trigger inside the completion transaction, then a
-Stripe Connect transfer to the driver's own connected account (ADR-0015).
+**The money loop — both directions — is built, live, and verified against real Stripe test keys.**
+`requested → accepted → in_progress → completed` runs end to end (a rider books at `/request`, a
+driver accepts, starts and completes at `/drive`, which calls the `complete-ride` Edge Function),
+and completion **records a debt and pays it**: a `driver_payouts` ledger row written by trigger
+inside the completion transaction, then a Stripe Connect transfer to the driver's own connected
+account (ADR-0015). A rider saves a card, booking places a buffered hold on it, and completing the
+ride captures the fare *before* transferring the driver's cut — which is what funds the platform
+balance every transfer draws on (ADR-0017). A late cancellation captures a fee from that same hold
+and pays it to the driver in full (ADR-0018).
 
-**The inbound half now exists too.** A rider saves a card, booking places a hold on it, and
-completing the ride captures the fare *before* transferring the driver's cut — which is what finally
-funds the platform balance every transfer draws on (ADR-0017). A late cancellation captures a fee
-from that same hold and pays it to the driver in full (ADR-0018). **The loop is closed end to end**,
-though none of it has run against real Stripe keys yet.
+**Proved end to end by a human against real Stripe test keys**, not just locally: a saved card, a
+buffered hold, a 3DS challenge resolved inline, a declined card canceling the ride cleanly, a
+captured fare followed by a real driver transfer, and a captured cancellation fee followed by its
+own real transfer. Manual verification surfaced and fixed three real gaps along the way — a
+`PaymentIntent` left to the Dashboard's payment-method config instead of pinned to card, a 3DS
+authorization with no path back to `authorized` once the webhook wasn't handling
+`payment_intent.amount_capturable_updated`, and a cancellation-fee payout that was recorded but had
+no caller that would ever actually send it. All three are fixed and shipped; none needed a new ADR
+— each was a gap in implementing an already-decided design, not a new decision.
 
 Still missing: driver decline, dispatch/proximity, realtime (every state change appears on reload),
 and cash rides — deliberately deferred, because cash inverts the flow into a driver-owes-RIDO debt
@@ -44,10 +52,10 @@ that needs its own design.
 | Icons | `lucide-react`, per the design system's documented substitution |
 | `packages/pricing` | **Implemented and tested.** Fare quoting (`quoteFare`) and the Prop 22 floor alongside the commission math. Bracketed commission, tier validation, flat-fee resolution. 95 tests passing identically under **both** Node and Deno. Exact integer arithmetic throughout — no floating-point value anywhere in the path. Reproduces all three figures the docs published by hand ($200.12 at $1,001; $488/$3,112/13.56% at $3,600). |
 | Brand | `design-system.md`, `brand-guide.md`, two Design export bundles with handoff notes |
-| Supabase | **Project live, schema applied to it.** Twenty migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`, the driver-accept policy + `rides_open_requests_idx` + `rides_one_active_per_driver`, `rides_started_at_present_iff_in_progress` + the `set_ride_duration` trigger, `driver_payouts` + the `queue_driver_payout` trigger + the two `drivers.stripe_*` state columns, `claim_driver_payout_attempt`/`release_driver_payout_attempt` + the three `driver_payouts` attempt-claim columns, and — new — `rider_payment_profiles`, the `ride_charges` ledger + its own attempt claim, `rides.rider_total_cents`, and the three `fare_rate_cards` payment columns + `queue_cancellation_payout`), RLS on every table, sixteen pgTAP files (134 tests) plus four standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **The six newest migrations are verified locally but not yet applied to the live project.** `database.types.ts` needs regenerating against them — `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts` are documented temporary hand-written bridges that get deleted when it runs. |
+| Supabase | **Project live, schema applied to it.** Twenty migrations (`drivers`, `subscriptions`, `rides`, `driver_monthly_stats`, `commission_tiers`, PostGIS + ride geography, plus the `rido_year_month`/`reserve_driver_month`/`bump_monthly_stats`/`apply_ride_commission`/`active_commission_tiers`/`driver_month_to_date` functions, plus `fare_rate_cards`, `active_fare_rate_card`, the `rides` address columns, `driver_id` nullable + `rides_one_active_per_rider` + `canceled_at`, the driver-accept policy + `rides_open_requests_idx` + `rides_one_active_per_driver`, `rides_started_at_present_iff_in_progress` + the `set_ride_duration` trigger, `driver_payouts` + the `queue_driver_payout` trigger + the two `drivers.stripe_*` state columns, `claim_driver_payout_attempt`/`release_driver_payout_attempt` + the three `driver_payouts` attempt-claim columns, and — new — `rider_payment_profiles`, the `ride_charges` ledger + its own attempt claim, `rides.rider_total_cents`, and the three `fare_rate_cards` payment columns + `queue_cancellation_payout`), RLS on every table, sixteen pgTAP files (134 tests) plus four standalone concurrency proofs — all green against a real Postgres. `commission_tiers` seeded. **All migrations are applied to the live project, and `database.types.ts` has been regenerated against them.** `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts` were documented temporary hand-written bridges pending exactly that regeneration — deleting them (and switching their callers to `@/types/database.types`) is now a live, actionable follow-up rather than a future one. |
 | `complete-ride` | **Built, tested, and finally called.** `supabase/functions/complete-ride/` — pure `core.ts` (authorization + rating, 19 tests under **both** Node and Deno), `db.ts` (the only SDK importer), `index.ts` (HTTP, bounded compare-and-swap retry). Deployed since ADR-0008; as of ADR-0014, `apps/web/src/lib/rides/server.ts`'s `completeRide()` is the app's first-ever call to a deployed Edge Function, forwarding the signed-in driver's own token so `authorizeCompletion` stays the real gate. |
-| Rider charging | **Built, and it closes the loop.** `apps/web/src/lib/payments/` is the domain (`getPaymentProfile`, `startCardSetup`, `recordCardFromSetup`, `authorizeRideCharge`, `captureRideCharge`, `chargeCancellationFee`, `voidRideCharge`), `browser.ts` the only file importing `@stripe/stripe-js` — mounting Stripe Elements per `map.ts`'s opaque-handle precedent, no React bindings, **the card number never reaches RIDO**. Booking places a hold (`holdAmountCents`, buffered by `authorization_buffer_bps`), completion captures the fare *before* the driver transfer, and a late cancel captures a fee that goes to the driver whole. The `ride_charges` ledger mirrors `driver_payouts` down to ADR-0016's attempt claim — applied from the start this time. **No money math in it:** the hold comes from `@rido/pricing`, the capture from a stored column. **Needs a human with test-mode keys** to prove end to end. ADR-0017, ADR-0018, `architecture/rider-charging.md`. |
-| Stripe / payouts | **Built, and no longer blocked — rider charging funds it.** `apps/web/src/lib/stripe/` is the vendor boundary — `server.ts` is the only file in the repo importing `stripe` (pinned API version, per-call client), with pure tested `account-status.ts` and `errors.ts` beside it (20 tests). `apps/web/src/lib/payouts/` is the domain: Connect Express onboarding, `payoutRide()`, `retryPayout()`, `settlePendingPayoutsForDriver()`, and the `/drive` summary. `apps/web/src/app/api/stripe/webhook/route.ts` is the repo's first `api/` route — raw-body signature verification, `account.updated` only, excluded from the `proxy.ts` matcher. **No money math anywhere in it:** the transferred amount is a copy of the ride's snapshotted `driver_payout_cents`, so `packages/pricing` is untouched. Transfers succeed in Stripe test mode. In production they used to return `balance_insufficient` by construction; since ADR-0017 a completed ride captures the rider's fare *before* transferring, which is what funds the balance — so that error is now a real signal rather than the expected outcome. Since ADR-0016 a retry of a failed row can also actually succeed once the balance is funded, rather than Stripe replaying its first cached failure for 24 hours. **Needs a human with test-mode keys** to prove end to end (enable Connect, onboard a test driver, fund the test balance with a real charge — the dashboard's "Add funds" button does not credit usable balance — complete a ride, confirm a `tr_...`). ADR-0015, ADR-0016, `architecture/payouts.md`. |
+| Rider charging | **Built, closes the loop, and verified live.** `apps/web/src/lib/payments/` is the domain (`getPaymentProfile`, `startCardSetup`, `recordCardFromSetup`, `authorizeRideCharge`, `captureRideCharge`, `chargeCancellationFee`, `voidRideCharge`), `browser.ts` the only file importing `@stripe/stripe-js` — mounting Stripe Elements per `map.ts`'s opaque-handle precedent, no React bindings, **the card number never reaches RIDO**. Booking places a hold (`holdAmountCents`, buffered by `authorization_buffer_bps`), completion captures the fare *before* the driver transfer, and a late cancel captures a fee that goes to the driver whole. The `ride_charges` ledger mirrors `driver_payouts` down to ADR-0016's attempt claim — applied from the start this time. **No money math in it:** the hold comes from `@rido/pricing`, the capture from a stored column. **Proved end to end against real Stripe test keys**: a saved card, a buffered hold, a 3DS challenge, a decline canceling the ride cleanly, a captured fare, and a captured cancellation fee — the last two each followed by a real driver transfer. ADR-0017, ADR-0018, `architecture/rider-charging.md`. |
+| Stripe / payouts | **Built, funded by rider charging, and verified live.** `apps/web/src/lib/stripe/` is the vendor boundary — `server.ts` is the only file in the repo importing `stripe` (pinned API version, per-call client), with pure tested `account-status.ts` and `errors.ts` beside it (20+ tests, including the card-decline family ADR-0017 added). `apps/web/src/lib/payouts/` is the domain: Connect Express onboarding, `payoutRide()`, `retryPayout()`, `settlePendingPayoutsForDriver()`, and the `/drive` summary — `cancelRide()` now also calls `payoutRide()` itself after a captured cancellation fee, a real gap found and fixed during this pass (nothing else was ever going to send that payout). `apps/web/src/app/api/stripe/webhook/route.ts` is the repo's first `api/` route — raw-body signature verification, now handling `account.updated`, `payment_intent.amount_capturable_updated` (the 3DS-authorization reconciliation ADR-0017 anticipated but didn't originally implement), `payment_intent.succeeded`, `payment_intent.payment_failed`, and `payment_intent.canceled` — excluded from the `proxy.ts` matcher. **No money math anywhere in it:** the transferred amount is a copy of the ride's snapshotted `driver_payout_cents`, so `packages/pricing` is untouched. **Proved end to end against real Stripe test keys**: a completed ride's captured fare funding a real driver transfer, and a captured cancellation fee doing the same. Since ADR-0016 a retry of a failed row can also actually succeed once the balance is funded, rather than Stripe replaying its first cached failure for 24 hours — and a captured charge still funds Stripe's *pending* balance first, with the same settlement delay as live mode, so a payout genuinely stuck on `balance_insufficient` right after a ride resolves on its own once that clears. ADR-0015, ADR-0016, `architecture/payouts.md`. |
 | Fare pricing | **Built.** `quoteFare` + a per-market `fare_rate_cards` table, seeded for San Diego and calibrated to sit ~15% under a modelled UberX fare. `npm run calibrate` prints the report; `npm run check:calibration` fails in CI if the discount drifts or a driver would earn less than on an incumbent. ADR-0009. |
 | Prop 22 floor | `packages/pricing/src/earnings-floor.ts` — per-trip diagnostic plus the two-week aggregate the statute actually uses. Nothing enforces it yet; there is no payout run to enforce it in. |
 | Ride spatial-temporal data | PostGIS enabled; `rides` carries generated `pickup_geog`/`dropoff_geog` (GiST-indexed), four lifecycle timestamps, `distance_meters`, `duration_seconds`, `pickup_address`/`dropoff_address`, and partial indexes on completed rides. **ADR-0011 decides what each holds:** the timestamps are RIDO's own clock and carry no vendor restriction (the temporal half of a demand heatmap, free from the first ride); the addresses are stored and the coordinates deferred to a backfill; `distance_meters`/`duration_seconds` are the *actual* trip, never the routed estimate. `requested_at`/`accepted_at`/`started_at`/`completed_at` are all written now, through the real lifecycle; `duration_seconds` is derived by trigger on completion when `started_at` exists. `distance_meters` and the pickup/dropoff coordinates still write nothing — both need a GPS trace or permanent geocoding, neither of which exists yet. |
@@ -126,12 +134,11 @@ stale month-to-date figure. The original two-*ride* race
 (`concurrent-apply-ride-commission.sh`, one `applied`/one `conflict`) is retired — its setup is now
 illegal under `rides_one_active_per_driver` (ADR-0013 made two of one driver's rides mutually
 exclusive, so they can no longer be racing toward completion at all). Full account: ADR-0014.
-✅ **Deployed** to the live project, and — new — **actually called by the app.** Driver accept
+✅ **Deployed** to the live project, and **actually called by the app.** Driver accept
 (ADR-0013) gave `complete-ride` a real path to an `'accepted'` row; ADR-0014's `startTrip()`/
-`completeRide()` walk a ride the rest of the way, locally verified end to end (real commission
-snapshot, real `driver_monthly_stats` row). ⬜ Exercise it against the *live* project — needs a
-human: push the newest migration, then a driver account, a booked ride, an accept, a start, and a
-completion call against the deployed function.
+`completeRide()` walk a ride the rest of the way. ✅ **Exercised against the live project** — a real
+driver account, a booked ride, an accept, a start, and a completion call against the deployed
+function, all verified live (real commission snapshot, real `driver_monthly_stats` row).
 ✅ **Ride pricing** — `quoteFare`, the `fare_rate_cards` table, and a calibration check in CI
 (ADR-0009, `business/fare-pricing.md`). Two findings recorded there rather than discovered later: a
 RIDO driver beats an incumbent driver on every trip shape tested even at our worst commission band,
@@ -147,21 +154,28 @@ quote.
 `commissionForRide`. Verified by repricing the seed and watching every page figure move, including
 the CSS bar widths. CI fails if the generated file drifts from the seed. The two hardcoded tier
 sentences in `(marketing)/drivers/page.tsx` and the "Drivers keep 87%" in `../brand/` are gone.
-🟨 **Stripe — the outbound half only.** ✅ Connect Express onboarding, the `driver_payouts` ledger
+✅ **Stripe — both halves, verified live.** Connect Express onboarding, the `driver_payouts` ledger
 written by trigger inside the completion transaction, one transfer per completed ride keyed on
-`<payout id>_<attempt>`, a signature-verified `account.updated` webhook, and `/drive`'s payout card
-(**ADR-0015**). The design's load-bearing property is that it adds *no money math*: the amount
-transferred is a copy of the ride's write-once `driver_payout_cents`, so the one thing that could
-corrupt the accounting record — a second opinion about what a driver is owed — does not exist in
-the payout path. ADR-0015 also **answers the first of the three open questions**: RIDO absorbs card
+`<payout id>_<attempt>`, a signature-verified webhook, and `/drive`'s payout card (**ADR-0015**).
+The design's load-bearing property is that it adds *no money math*: the amount transferred is a
+copy of the ride's write-once `driver_payout_cents`, so the one thing that could corrupt the
+accounting record — a second opinion about what a driver is owed — does not exist in the payout
+path. ADR-0015 also **answers the first of the three open questions**: RIDO absorbs card
 processing, so a driver receives exactly the figure shown before they accepted.
 ✅ **A retry actually retries (ADR-0016).** Found during manual verification: a payout id alone as
 the idempotency key made Stripe replay a payout's *first* cached response for up to 24 hours, so a
 `balance_insufficient` row — the expected production state — could never be retried no matter how
 much the platform balance changed. `claim_driver_payout_attempt` now supplies a fresh attempt
 number per genuine attempt, proved race-safe by `concurrent-payout-claim.sh`.
-⬜ **Rider charging** — the inbound half. Until it lands, production transfers return
-`balance_insufficient` and the ledger holds them `pending`; test mode proves the whole path today.
+✅ **Rider charging — the inbound half, built and verified live (ADR-0017, ADR-0018).** A saved
+card, a buffered hold at booking, a fare captured before the driver transfer, and a cancellation
+fee captured and paid to the driver whole. Manual verification against real test keys surfaced and
+fixed three real gaps, none requiring a new ADR since each was an incomplete implementation of an
+already-decided design rather than a new decision: a `PaymentIntent` left to the Stripe Dashboard's
+payment-method configuration instead of pinned to `["card"]`; a 3DS-authorized charge stuck at
+`authorizing` forever because nothing handled `payment_intent.amount_capturable_updated`; and a
+captured cancellation fee whose `driver_payouts` row was recorded but never actually sent, since
+`cancelRide()` had no equivalent of `completeRide()`'s post-completion `payoutRide()` call.
 ⬜ Flat-fee subscription billing — not blocked, just not yet due (ADR-0003: $0 all pilot).
 ✅ **`gradComm()` is retired.** `tools/pilot-model` is a real workspace (`npm run model`) that
 calls `@rido/pricing` instead of re-implementing bracketed commission in floating-point dollars.

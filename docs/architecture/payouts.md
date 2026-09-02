@@ -5,10 +5,11 @@ decides how that splits and snapshots it; this decides how the driver's half rea
 Why it's shaped this way: `../decisions/0015-connect-payouts-per-ride.md` and
 `../decisions/0016-payout-attempt-claim.md`.*
 
-**Status: built, and blocked on the inbound half in production.** `apps/web/src/lib/stripe/`,
-`apps/web/src/lib/payouts/`, the `driver_payouts` table, and `/drive`'s payout card. Transfers
-succeed in Stripe test mode today; in production they fail with `balance_insufficient` until rider
-charging exists, and the ledger holds every unpaid row until it does.
+**Status: built, funded by rider charging, and verified live.** `apps/web/src/lib/stripe/`,
+`apps/web/src/lib/payouts/`, the `driver_payouts` table, and `/drive`'s payout card. A real transfer
+has now landed against a real captured fare and a real captured cancellation fee, both against real
+Stripe test keys — the `balance_insufficient` this section used to describe as production's expected
+outcome is a real signal now, not a given.
 
 ## The one idea
 
@@ -28,13 +29,25 @@ likes, because the ledger is what remembers.
 2. **Stripe reports back.** An `account.updated` webhook syncs `stripe_payouts_enabled` and
    `stripe_details_submitted`. The driver's return redirect also re-reads Stripe directly, because
    the webhook and the redirect race and either can arrive first.
-3. **A ride completes.** `queue_driver_payout` inserts a `pending` row carrying exactly the ride's
-   `driver_payout_cents`. Nothing is computed — the amount is copied from a write-once snapshot.
-4. **The transfer fires**, best-effort, right after completion. `settle()` first claims the row
-   (`claim_driver_payout_attempt`), which hands back an attempt number folded into Stripe's
-   idempotency key — the reason a retry can actually retry, not replay a stale cached response
-   (ADR-0016). On success the row becomes `paid` and records the transfer id. On failure it stays
-   `pending` (retryable) or becomes `failed` (terminal), and `/drive` shows it either way.
+3. **A ride completes, or a rider pays a late-cancellation fee.** `queue_driver_payout` and
+   `queue_cancellation_payout` (ADR-0018) each insert a `pending` row carrying exactly the captured
+   amount. Nothing is computed — the amount is copied from a write-once snapshot or a capture, never
+   derived. `driver_payouts` carries no `kind` column distinguishing the two, the same reasoning
+   `ride_charges` uses: which one a row was for is answered by `rides.status`, once.
+4. **The transfer fires**, best-effort, right after whichever of those wrote the row — `completeRide()`
+   calls `payoutRide()` after completion, `cancelRide()` calls it after a captured fee. `settle()`
+   first claims the row (`claim_driver_payout_attempt`), which hands back an attempt number folded
+   into Stripe's idempotency key — the reason a retry can actually retry, not replay a stale cached
+   response (ADR-0016). On success the row becomes `paid` and records the transfer id. On failure it
+   stays `pending` (retryable) or becomes `failed` (terminal), and `/drive` shows it either way.
+   **Nothing else ever revisits a `pending` row on its own.** `settlePendingPayoutsForDriver()` only
+   runs once, on the driver's Connect onboarding-return leg (a ride completed before onboarding
+   finished is the case it exists for), and `/drive` deliberately offers no retry button for
+   `pending` — only `failed`, since `pending` isn't an error (`brand/design-system.md`). `retryPayout()`
+   itself isn't status-gated, so a `pending` row could be retried the same way a `failed` one is, but
+   nothing in the UI reaches it that way today. A payout that lands `pending` outside those two
+   trigger events (completion, a captured cancellation fee) has no driver-facing path back — a real,
+   tracked gap, the same shape as the missing sweep for stuck `authorized` charges.
 5. **Stripe pays the bank** on its own schedule. RIDO builds no scheduler.
 
 ## Ledger states, and why the distinction matters
@@ -88,7 +101,9 @@ with the row left `pending` and the driver told their earnings were recorded.
 **Rider charging (ADR-0017) is what ends that.** A completed ride now captures the rider's held fare
 *before* it transfers the driver's cut, in that order and for exactly this reason: the capture is
 what funds the balance the transfer draws on. `balance_insufficient` stops being the expected
-outcome and becomes a real signal that something is wrong.
+outcome and becomes a real signal that something is wrong — verified, not just designed: a real
+captured fare and a real captured cancellation fee have both funded a real transfer against real
+Stripe test keys.
 
 The error case stays in `errors.ts` regardless. A platform balance can still run dry — a burst of
 completions against slow-settling captures, a refund, a dispute — and when it does, the honest

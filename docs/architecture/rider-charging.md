@@ -5,10 +5,12 @@ decides how that splits, `payouts.md` gets the driver's half out — this gets t
 Why it's shaped this way: `../decisions/0017-rider-charging.md` and
 `../decisions/0018-late-cancellation-fee.md`.*
 
-**Status: built.** `apps/web/src/lib/payments/`, the `ride_charges` ledger,
-`rider_payment_profiles`, the card form on `/account` and in the booking sheet. This is the half
-that funds the platform balance every driver transfer draws on — before it, every production payout
-failed `balance_insufficient` by construction.
+**Status: built, and verified live against real Stripe test keys.** `apps/web/src/lib/payments/`,
+the `ride_charges` ledger, `rider_payment_profiles`, the card form on `/account` and in the booking
+sheet. This is the half that funds the platform balance every driver transfer draws on — before it,
+every production payout failed `balance_insufficient` by construction. A saved card, a buffered
+hold, a 3DS challenge, a decline, a captured fare, and a captured cancellation fee have all now run
+end to end with a real driver transfer landing on the far side of the two captures.
 
 ## The one idea
 
@@ -28,12 +30,17 @@ figure is known, and takes only that. What was held and not taken is released.
    the PaymentIntent's `transfer_group` and its metadata all need the id), then authorizes
    `holdAmountCents({ riderTotalCents, bufferBps })` against the saved card, on-session.
 3. **The bank may ask a question.** A `requires_action` result comes back with a client secret and
-   the browser finishes the 3DS challenge in the sheet. The rider is on screen — that is the whole
-   reason authorization is on-session.
+   the browser finishes the 3DS challenge in the sheet — the rider is on screen, which is the whole
+   reason authorization is on-session. **Resolving the challenge is not the same as recording it.**
+   `completeAuthorization()` talks to Stripe directly from the browser and never calls this app back,
+   so the row stays `authorizing` until Stripe's own `payment_intent.amount_capturable_updated`
+   webhook event reconciles it to `authorized` — the only thing that ever does, on this path.
 4. **Completion captures.** `completeRide()` → `captureRideCharge()` → `payoutRide()`. The capture
    funds the balance the transfer draws on, which is why it runs first.
 5. **Or a cancellation releases, or takes a fee.** Free before a driver accepts, and for a grace
-   window after; past that, the fee is a **partial capture of the same hold** (ADR-0018).
+   window after; past that, the fee is a **partial capture of the same hold** (ADR-0018), and
+   `cancelRide()` calls `payoutRide()` itself right after — nothing else in the app would ever send
+   that payout on its own; see `payouts.md`.
 
 ## Charge states, and what each means
 
@@ -93,7 +100,7 @@ day repricing-from-actuals lands, every hold already in flight must already have
 
 ## Testing this against real Stripe
 
-Four things cost real time to discover, so they are written down.
+Five things cost real time to discover, so they are written down.
 
 **Funding a test platform balance.** The dashboard's **"Add funds" button does not credit a balance
 that transfers can draw on.** Create a real test charge instead:
@@ -125,10 +132,19 @@ real and correct the moment it happens — Stripe still won't let a transfer dra
 normal payout-settlement window elapses, in test mode exactly as in live. That is not
 `balance_insufficient` from an empty balance (the case `tok_bypassPending` above exists for); it's
 `balance_insufficient` from a balance that is real but not yet available, and nothing here should
-"fix" it. `settlePendingPayoutsForDriver()` already retries every unpaid payout on each `/drive`
-load — ADR-0016's claim makes that safe to call as often as the page loads — so the transfer
-succeeds on its own the moment Stripe clears the funds; the ledger stays exactly as owed in the
-meantime.
+"fix" it. Every ride- or cancellation-triggered payout now calls `payoutRide()` itself once
+(completion, or a captured cancellation fee), and `retryPayout()` is available by hand from
+`/drive` for a `failed` row — but a merely `pending` one has no automatic retry loop behind it
+(`settlePendingPayoutsForDriver()` only fires on the driver's Connect onboarding-return leg, not on
+every page load — see `payouts.md`), so a payout stuck this way clears once you retry it, or once
+`payoutRide()` is called again for that ride.
+
+**`stripe listen` can be authenticated to a different account than your app's key, silently.** The
+symptom is total silence: no forwarded events at all, not even a failed-delivery line, because
+Stripe never sends a CLI session watching the wrong account anything to forward. `stripe config
+--list` shows the CLI's current `account_id`; compare it against the `"id"` from the `curl` command
+above. If they differ, `stripe login` again and pick the correct workspace in the browser account
+switcher before approving — accounts under one login don't share CLI sessions automatically.
 
 ## Invariants this flow must preserve
 

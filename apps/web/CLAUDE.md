@@ -38,8 +38,8 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 | `src/lib/maps/` | Mapbox. `server.ts` measures a trip and resolves a storable coordinate (`server-only`); `browser.ts` searches places; `map.ts` renders one (`mapbox-gl`, dynamically imported); `route.ts`/`places.ts`/`geocode.ts`/`errors.ts`/`map-geometry.ts` are pure and tested. See **Maps** below |
 | `src/lib/fares/` | Reads the active `fare_rate_cards` row and calls `quoteFare()` — the DB half of ADR-0009, same pattern `src/lib/drivers/server.ts` uses for its own table |
 | `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthToDateCents(driverId)` — and hands both to `commissionForRide()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. What powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet |
-| `src/lib/rides/` | Booking, accept, and completion: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `start.ts` (pure `canStartTrip`), `completion-errors.ts` (pure, `complete-ride`'s HTTP responses → RIDO's voice + retryability), `realtime-event.ts` (pure, channel status → refetch or not), `realtime.ts` (**browser-side**, the opaque `RideSubscription` — the one exception to this module being server-only), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, `getRecentlyCompletedRide`, `listOpenRequests`, `acceptRide`, `startTrip` — all service-role writes — and `completeRide`, which calls the deployed `complete-ride` Edge Function instead). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
-| `src/lib/drivers/` | Whether the signed-in user IS a driver: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
+| `src/lib/rides/` | Booking, accept, and completion: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `start.ts` (pure `canStartTrip`), `completion-errors.ts` (pure, `complete-ride`'s HTTP responses → RIDO's voice + retryability), `realtime-event.ts` (pure, channel status → refetch or not), `realtime.ts` (**browser-side**, the opaque `RideSubscription` — the one exception to this module being server-only), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `getActiveRide`, `getRecentlyCompletedRide`, `listOpenRequests`, `acceptRide`, `declineRide`, `startTrip` — all service-role writes — and `completeRide`, which calls the deployed `complete-ride` Edge Function instead). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
+| `src/lib/drivers/` | Whether the signed-in user IS a driver, and whether they're taking work: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`, `setAcceptingRides` — the app's only write to `drivers`, and the only one anywhere that goes through RLS rather than the service role, per ADR-0019's column grant). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't. `client.ts` was dead code until `src/lib/rides/realtime.ts` became its first consumer |
 | `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
@@ -102,7 +102,8 @@ every unassigned ride, because a *nullable* `driver_id` in `IN (subquery)` is SQ
 touch one row, so Postgres's row-level locking is the whole mechanism. `completeRide()` instead
 calls the deployed `complete-ride` Edge Function, **forwarding the driver's own access token**, not
 the service-role key, which would make `authorizeCompletion` skip its checks (invariant 6).
-ADR-0013, ADR-0014, `ride-booking.md`, `ride-completion.md`.
+**Availability gates new work, never committed work** — only `canAcceptRide()` reads it, so a driver
+may go offline mid-ride (ADR-0019). ADR-0013, ADR-0014, `ride-booking.md`, `ride-completion.md`.
 
 ## Money in and out
 
@@ -135,8 +136,7 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
 - **Stripe's word, not the user's.** The `drivers.stripe_*` columns and every
   `rider_payment_profiles` column sit outside the `authenticated` `UPDATE` grant. Onboarding links
   and SetupIntent secrets are single-use — one per attempt, never cached.
-- `src/lib/payouts/types.ts` and `src/lib/payments/types.ts` are **temporary** bridges, kept past
-  their trigger: `types:generate` has now run, so deleting both is a live follow-up, not a future one.
+- Deleting the two temporary `types.ts` bridges is a live follow-up — `supabase/CLAUDE.md` has the detail.
 
 ## Maps
 

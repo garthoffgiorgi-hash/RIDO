@@ -29,6 +29,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Who may write a `rides` row, and what happens when a quoted price moves | `decisions/0012-rider-books-server-owns-the-write.md` |
 | Who may accept a ride, the open-pool RLS policy, why no lock/CAS is needed | `decisions/0013-driver-accepts-one-row-one-update.md` |
 | Why the app forwards the driver's JWT to `complete-ride` rather than re-orchestrating it, `started_at`/`duration_seconds` | `decisions/0014-app-calls-complete-ride.md` |
+| A driver's online/offline state, declining a request, and which columns a driver may write about themselves | `decisions/0019-driver-controls-their-own-queue.md` |
 | How a driver gets paid: the ledger, per-ride transfers, Connect onboarding | `architecture/payouts.md` |
 | How a rider is charged: the hold, the capture, saved cards, cancellation fees | `architecture/rider-charging.md` |
 | **Who absorbs card processing** (RIDO does, pilot-scoped), and why payouts are per-ride | `decisions/0015-connect-payouts-per-ride.md` |

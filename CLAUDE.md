@@ -28,11 +28,11 @@ its payload is discarded and the client refetches through the same server read a
 because the driver's payout figure is computed live and does not exist on the row at all.
 
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
-whole pilot), the native driver app, dispatch/proximity matching, driver decline, an
-online/offline toggle, and realtime on the driver's *open pool* — a whole-table subscription with
-its own authorization question, deferred in ADR-0020 rather than skipped. None of these block the
-business model the way an empty platform balance did; they're the day-to-day usability gaps left
-once the money itself moves correctly both ways.
+whole pilot), the native driver app, dispatch/proximity matching, and realtime on the driver's
+*open pool* — a whole-table subscription with its own authorization question, deferred in
+ADR-0020 rather than skipped. None of these block the business model the way an empty platform
+balance did; they're the day-to-day usability gaps left once the money itself moves correctly both
+ways.
 
 **Partially built:**
 
@@ -42,8 +42,8 @@ once the money itself moves correctly both ways.
   and `/drive` have real functionality now, but landing a rider straight into a live map, or a
   driver straight into a dispatch board, on every sign-in isn't obviously right either.
 - **The driver view.** Built: the open pool, the live "you keep $X (Y%)" figure, race-proof accept
-  and start writes, complete, and the payout card. Not built: online/offline availability, MTD
-  tier-progress, decline.
+  and start writes, complete, the payout card, and — ADR-0019 — an online/offline toggle plus
+  per-driver decline. Not built: MTD tier-progress.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.

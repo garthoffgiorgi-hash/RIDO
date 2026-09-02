@@ -12,7 +12,18 @@ import type { Database } from "@/types/database.types";
  * one function that talks to Supabase lives in `./server.ts`.
  */
 
-export type DriverProfile = Database["public"]["Tables"]["drivers"]["Row"];
+/**
+ * The whole generated `drivers` row, plus the one column the generated types don't know about yet.
+ *
+ * `accepting_rides` ships in `20260902130000_enable_driver_availability.sql` (ADR-0019); the
+ * intersection is a **temporary** bridge until `npm run types:generate` runs against the pushed
+ * migration, at which point it collapses back to the generated `Row` alone. Same documented
+ * stopgap `src/lib/payouts/types.ts` and `src/lib/payments/types.ts` use, kept to one line here
+ * because it's one column rather than a whole table.
+ */
+export type DriverProfile = Database["public"]["Tables"]["drivers"]["Row"] & {
+  readonly accepting_rides: boolean;
+};
 
 /**
  * Whether this driver may currently accept rides.

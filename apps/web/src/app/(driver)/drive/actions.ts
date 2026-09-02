@@ -2,7 +2,7 @@
 
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth/server";
-import { getOwnDriverProfile } from "@/lib/drivers/server";
+import * as drivers from "@/lib/drivers/server";
 import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
 import * as rides from "@/lib/rides/server";
@@ -17,6 +17,15 @@ import * as rides from "@/lib/rides/server";
  */
 export async function acceptRide(rideId: string) {
   return rides.acceptRide(rideId);
+}
+
+export async function declineRide(rideId: string) {
+  return rides.declineRide(rideId);
+}
+
+/** Online/offline. The write goes through RLS rather than the service role — see ADR-0019. */
+export async function setAcceptingRides(accepting: boolean) {
+  return drivers.setAcceptingRides(accepting);
 }
 
 export async function startTrip(rideId: string) {
@@ -102,7 +111,7 @@ export async function retryPayout(payoutId: string) {
  */
 export async function readDriverActiveRide() {
   const user = await requireUser();
-  const driver = await getOwnDriverProfile(user);
+  const driver = await drivers.getOwnDriverProfile(user);
   if (!driver) return null;
 
   const result = await rides.getDriverActiveRide(driver);

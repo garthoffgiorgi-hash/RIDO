@@ -14,15 +14,27 @@ import type { OpenRideRequest } from "@/lib/rides/server";
  *
  * No `"use client"` here — like `Button`/`Card`/`Fare`, this stays a plain function component;
  * `onAccept` only needs a Client Component *somewhere* above it in the tree, not on this file.
+ *
+ * **Decline is deliberately the quieter half** (ADR-0019): a small ghost control set apart from
+ * Accept, never a second full-width button under it. A decline is permanent and the product has no
+ * undo, so a mis-tap on a phone would cost a driver a request they wanted — the affordance has to
+ * make that hard to do by accident, not merely possible to recover from.
  */
 export function RideCard({
   ride,
   onAccept,
+  onDecline,
   accepting,
+  declining,
+  canAccept,
 }: {
   ride: OpenRideRequest;
   onAccept: (rideId: string) => void;
+  onDecline: (rideId: string) => void;
   accepting: boolean;
+  declining: boolean;
+  /** False while the driver is offline — the board stays readable, Accept doesn't. */
+  canAccept: boolean;
 }) {
   const driverKeepBps = BPS_DENOMINATOR - ride.commissionRateBps;
   const keepPct = new Intl.NumberFormat("en-US", {
@@ -49,10 +61,21 @@ export function RideCard({
         size="lg"
         fullWidth
         onClick={() => onAccept(ride.id)}
-        disabled={accepting}
+        disabled={accepting || declining || !canAccept}
       >
         {accepting ? "Accepting…" : "Accept"}
       </Button>
+
+      <div className="flex justify-center">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onDecline(ride.id)}
+          disabled={accepting || declining}
+        >
+          {declining ? "Hiding…" : "Not this one"}
+        </Button>
+      </div>
     </Card>
   );
 }

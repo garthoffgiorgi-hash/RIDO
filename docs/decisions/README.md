@@ -46,11 +46,8 @@ What this costs, what it rules out, what now has to be true.
 | [0016](0016-payout-attempt-claim.md) | A payout retry needs a claim, not just a stable idempotency key | Accepted |
 | [0017](0017-rider-charging.md) | Hold at request, capture at completion | Accepted |
 | [0018](0018-late-cancellation-fee.md) | A rider may cancel late, for a fee the driver keeps | Accepted |
+| [0019](0019-driver-controls-their-own-queue.md) | The driver controls their own queue | Accepted |
 | [0020](0020-realtime-ride-status.md) | A realtime event is a notification, not a data channel | Accepted |
-
-**0019 is claimed and lands with the driver-queue branch** (online/offline and decline). Numbers are
-permanent and assigned when an ADR is written, not when it merges, so the gap here is a branch that
-has not landed yet — not a missing decision. Whoever merges that branch adds its row.
 
 This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
 rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot

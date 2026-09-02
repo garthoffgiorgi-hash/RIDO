@@ -45,6 +45,18 @@ import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
 const messageOf = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
+/**
+ * `ride_declines` (ADR-0019) postdates the generated types, so its two touch points here reach it
+ * through this narrow escape hatch rather than a whole bridge file. **Temporary** — it goes away
+ * when `npm run types:generate` runs against the pushed migration, same as the note on
+ * `DriverProfile` in `src/lib/drivers/status.ts`. Every row it produces is cast to a real shape at
+ * the query boundary, so nothing downstream is `any`.
+ */
+type UntypedTables = {
+  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate ride_declines
+  from: (table: string) => any;
+};
+
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
 
@@ -425,6 +437,30 @@ export async function listOpenRequests(
     return { ok: true, data: [] };
   }
 
+  // Drop what this driver has already waved off (ADR-0019). Scoped to the candidate ids rather
+  // than reading their whole decline history: that history only ever grows — nothing reaps it —
+  // while the board is bounded by however many rides are open right now. `ride_declines`' PK is
+  // `(driver_id, ride_id)`, driver first, so this exact predicate is served by the index, and RLS
+  // scopes it to the caller regardless.
+  //
+  // Filtered in JS rather than through PostgREST's `.not("id", "in", …)`, which needs a
+  // hand-built parenthesised list and renders an empty one as `in ()` — a syntax error. A pool
+  // large enough for that to matter wants a SQL anti-join instead, not a longer string.
+  const { data: declined } = (await (supabase as unknown as UntypedTables)
+    .from("ride_declines")
+    .select("ride_id")
+    .in(
+      "ride_id",
+      openRides.map((ride) => ride.id),
+    )) as { data: { ride_id: string }[] | null };
+
+  const declinedIds = new Set<string>((declined ?? []).map((row) => row.ride_id));
+  const candidates = openRides.filter((ride) => !declinedIds.has(ride.id));
+
+  if (candidates.length === 0) {
+    return { ok: true, data: [] };
+  }
+
   const tiers = await getActiveCommissionTiers();
   if (!tiers.ok) return tiers;
 
@@ -433,7 +469,7 @@ export async function listOpenRequests(
 
   return {
     ok: true,
-    data: openRides.map((ride) => {
+    data: candidates.map((ride) => {
       const { driverPayoutCents, commissionRateBps } = commissionForRide({
         fareCents: cents(ride.fare_cents),
         mtdGrossCents: cents(mtdGrossCents.data),
@@ -465,6 +501,10 @@ export async function listOpenRequests(
  * `status = 'requested' AND driver_id IS NULL` as a database-enforced predicate — atomic, no
  * lock, no retry loop needed the way `complete-ride`'s two-row write does (ADR-0013). Zero rows
  * updated means the pre-flight read was already stale: someone else won in between.
+ *
+ * **Availability is read here, not carried from the render.** `getOwnDriverProfile()` runs on every
+ * call, so a driver who went offline in another tab after the board was drawn is refused by the
+ * fresh row rather than an old one — which is why a stale tab needs no special handling (ADR-0019).
  */
 export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
   const user = await requireUser();
@@ -487,7 +527,10 @@ export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
   }
 
   const openRide: OpenRide = { status: ride.status, driverId: ride.driver_id };
-  const decision = canAcceptRide(openRide, driver.status);
+  const decision = canAcceptRide(openRide, {
+    status: driver.status,
+    acceptingRides: driver.accepting_rides,
+  });
   if (!decision.allowed) {
     return failed(decision.message);
   }
@@ -510,6 +553,44 @@ export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
 
   if (!accepted || accepted.length === 0) {
     return failed("Another driver already accepted this ride.");
+  }
+
+  return { ok: true, data: null };
+}
+
+/**
+ * Hides an open request from this driver's board, permanently (ADR-0019).
+ *
+ * **Nothing about the ride changes.** It stays `'requested'` with a null `driver_id`, stays in the
+ * pool, and stays available to every other driver — a decline is one driver's opinion, never a
+ * withdrawal of the rider's request. `listOpenRequests()` is the only reader.
+ *
+ * Deliberately unguarded against ride state. Declining a ride another driver accepted a moment ago
+ * is inert: the row only ever filters a pool that ride has already left. A defensive status check
+ * would add a failure mode where there is currently none, and a race for it to lose.
+ *
+ * Idempotent by primary key — `(driver_id, ride_id)` plus `on conflict do nothing`, the same idiom
+ * `queue_driver_payout` uses, so a double-tapped Decline is a no-op rather than an error.
+ */
+export async function declineRide(rideId: string): Promise<RidesResult<null>> {
+  const user = await requireUser();
+  const driver = await getOwnDriverProfile(user);
+
+  if (!driver) {
+    return failed("You don't have a driver profile yet.");
+  }
+
+  const service = createServiceRoleClient() as unknown as UntypedTables;
+
+  const { error } = await service
+    .from("ride_declines")
+    .upsert(
+      { driver_id: driver.id, ride_id: rideId },
+      { onConflict: "driver_id,ride_id", ignoreDuplicates: true },
+    );
+
+  if (error) {
+    return failed("We couldn't hide that request. Try again in a moment.");
   }
 
   return { ok: true, data: null };

@@ -13,13 +13,14 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — eight core tables
+## Schema — nine core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
 `id` · `auth_user_id` → `auth.users`, cascades · `full_name` · `email` · `phone` · `status` (`pending` | `active` | `suspended`) · `background_check_status` (`pending`|`passed`|`failed`) · `dmv_check_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_status` (`pending`|`passed`|`failed`) · `vehicle_inspection_date` · `training_completed` (bool) · `vehicle_make/model/year/plate` · `stripe_account_id` (Connect Express, written by RIDO's server at onboarding) · `stripe_payouts_enabled` · `stripe_details_submitted` (both mirrored from a signature-verified `account.updated` webhook — ADR-0015) · `created_at` · `updated_at` (trigger-maintained).
+Plus **`accepting_rides`** (bool, default `true`, ADR-0019) — the driver's own online/offline state. The UI calls it Online/Offline; it gates *accepting only*, so an offline driver still sees the whole open board and still finishes a ride they already hold.
 **Activation gate:** `status='active'` requires background + inspection passed — a table `CHECK` constraint, not just app logic. `dmv_check_status`/`vehicle_inspection_status` values weren't specified anywhere; inferred to mirror `background_check_status`.
-**RLS:** a driver reads and updates their own row; the update grant covers only contact/vehicle columns, never `status`, a compliance field, or any of the three `stripe_*` columns — those are Stripe's word about an external system, written only by the service role. No `INSERT` for `authenticated` — the initial row is created by an admin/vetting process under the service role.
+**RLS:** a driver reads and updates their own row; the update grant covers only contact/vehicle columns **plus `accepting_rides`** — never `status`, a compliance field, or any of the three `stripe_*` columns, which are Stripe's word about an external system and written only by the service role. `accepting_rides` earns its place by the rule ADR-0019 states: *one writer forever → column grant; possibly-many writers → service role*, and a driver's willingness to work is something only they can assert. No `INSERT` for `authenticated` — the initial row is created by an admin/vetting process under the service role.
 
 ### `subscriptions`
 The flat-fee relationship (Stripe-backed). Drives pilot vs steady.
@@ -57,6 +58,13 @@ Who a rider is to Stripe, and which card they saved. A table rather than a colum
 `rider_id` (PK) → `auth.users`, **cascade** (a pointer and a display cache, not a financial record — the money lives in `ride_charges`, which restricts) · `stripe_customer_id` (unique) · `default_payment_method_id` (null is what makes `requestRide` return `needs_card`) · `card_brand` · `card_last4` (exactly 4) · `card_exp_month`/`card_exp_year` · `created_at` · `updated_at`.
 **The card number is never here.** Stripe Elements collects it in the browser and returns a PaymentMethod reference; brand/last4/expiry exist only so a rider recognises their own card without a round trip.
 **RLS:** read own, write none. Every column is Stripe's word about an external system.
+
+### `ride_declines`
+Which open requests a driver has waved off, so the board stops showing them. Why: `../decisions/0019-driver-controls-their-own-queue.md`.
+`driver_id` → drivers, **cascade** · `ride_id` → rides, **cascade** · `declined_at` · primary key `(driver_id, ride_id)`.
+**Cascade, not restrict** — this is a preference, not a financial record, so the `rider_payment_profiles` reasoning applies rather than `driver_payouts`'. It's also what keeps an un-decline trivially addable later: deleting a preference row is a normal operation.
+**The composite PK is the whole mechanism.** Driver-first so `where driver_id = ? and ride_id in (…)` is served directly, and it makes a repeated decline `on conflict do nothing` — the same idempotence idiom `queue_driver_payout` uses. There is deliberately **no index on `ride_id` alone**: nothing queries by ride, and the only cascade that would want one fires on ride deletion, which never happens.
+**RLS:** a driver reads their own declines and writes none — the insert goes through the service role, since unlike `accepting_rides` this has plausible future writers that aren't the driver (auto-decline on a dispatch timeout, an admin clearing declines).
 
 ### `commission_tiers`
 Config — the graduated rates, editable without deploy.

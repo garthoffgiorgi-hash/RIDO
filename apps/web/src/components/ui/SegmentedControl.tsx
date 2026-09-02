@@ -13,14 +13,27 @@ interface SegmentedControlProps<T extends string> {
   readonly onChange: (value: T) => void;
   /** Accessible name for the group, e.g. "Log in method". */
   readonly label: string;
+  /**
+   * How the selected segment reads. `"default"` is the white lift the auth surfaces use — a mode
+   * switch, where neither choice is a *state*. `"accent"` fills it Signal, for a control whose
+   * selection means something is live: `brand/design-system.md` requires "online = Signal" for the
+   * driver's availability toggle, and this is how that gets honoured without a second primitive.
+   */
+  readonly tone?: "default" | "accent";
   readonly className?: string;
 }
+
+const ACTIVE_CLASSES: Record<"default" | "accent", string> = {
+  default: "bg-white text-midnight shadow-[var(--shadow-float)]",
+  accent: "bg-signal text-white",
+};
 
 export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
   label,
+  tone = "default",
   className = "",
 }: SegmentedControlProps<T>) {
   return (
@@ -37,9 +50,7 @@ export function SegmentedControl<T extends string>({
             onClick={() => onChange(option.value)}
             aria-pressed={active}
             className={`h-9 flex-1 rounded-[8px] text-[13.5px] font-semibold transition-colors duration-150 ease-standard ${
-              active
-                ? "bg-white text-midnight shadow-[var(--shadow-float)]"
-                : "text-slate hover:text-ink"
+              active ? ACTIVE_CLASSES[tone] : "text-slate hover:text-ink"
             }`}
           >
             {option.label}

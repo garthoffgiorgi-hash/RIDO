@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CardForm } from "@/components/domain/CardForm";
 import { PlaceSearch } from "@/components/domain/PlaceSearch";
 import { RideMap } from "@/components/domain/RideMap";
@@ -11,6 +11,7 @@ import { FareChip } from "@/components/ui/FareChip";
 import { Sheet } from "@/components/ui/Sheet";
 import type { Place } from "@/lib/maps/types";
 import { completeAuthorization } from "@/lib/payments/browser";
+import { subscribeToRide } from "@/lib/rides/realtime";
 // Types only — the functions themselves come from ./actions, the "use server" bridge. Importing
 // a value (not just a type) from server.ts here would pull server-only code into the client
 // bundle; Next.js refuses that build, which is how this was caught.
@@ -19,6 +20,7 @@ import {
   cancelRide,
   quoteCancellation,
   quoteRideRequest,
+  readRiderRideState,
   requestRide,
   saveCard,
   startCardSetup,
@@ -89,6 +91,60 @@ export function RequestPanel({
       cancelled = true;
     };
   }, [pickupCoords, dropoffCoords]);
+
+  // The subscription's handler must see the CURRENT in-flight flags, not the ones captured when the
+  // effect ran. A ref is what makes that true without re-subscribing on every keystroke — the
+  // effect below is keyed on the ride id alone, deliberately, so a new booking resubscribes and
+  // nothing else does.
+  const actionInFlight = useRef(false);
+  actionInFlight.current = booking || canceling;
+
+  const activeRideId = activeRide?.id ?? null;
+  // The id the server rendered this page with, captured once. Anything else in `activeRideId` is a
+  // ride this browser booked after mount — see the catch-up refetch below.
+  const [serverRenderedRideId] = useState(initialActiveRide?.id ?? null);
+
+  useEffect(() => {
+    if (!activeRideId) return;
+
+    let cancelled = false;
+    const subscription = subscribeToRide(activeRideId, async () => {
+      // The rider's own writes echo back over the socket: booking and cancelling both fire an event
+      // for the change this panel already applied optimistically. The refetch is idempotent, so the
+      // echo itself is harmless — but a refetch that LANDS mid-action would overwrite optimistic
+      // state with a row the action hasn't finished writing yet. Skipping while an action is in
+      // flight costs nothing: the action sets the same state when it returns.
+      if (actionInFlight.current) return;
+
+      const fresh = await readRiderRideState();
+      if (cancelled) return;
+      setActiveRide(fresh.activeRide);
+      // Set both together. A completed ride takes `activeRide` to null, and without this the sheet
+      // would fall through to an empty "Where to?" form instead of the trip-complete summary.
+      setRecentlyCompleted(fresh.recentlyCompleted);
+      setError(null);
+    });
+
+    // Closes the one window realtime cannot cover on its own. A ride booked in this browser is
+    // written BEFORE this effect runs, so there are a few hundred milliseconds between the insert
+    // landing and the channel joining — and a driver who accepts inside it produces an event nobody
+    // is listening for yet. The screen would then sit on "Looking for a driver" until the *next*
+    // change. One catch-up read closes it. Skipped when the id came from the server render, which
+    // has no such gap: that state was read on the server moments ago.
+    if (activeRideId !== serverRenderedRideId) {
+      void readRiderRideState().then((fresh) => {
+        // Guarded on the ride still being the one we subscribed to, not just on `cancelled` — the
+        // rider may have cancelled and re-booked while this was in flight.
+        if (cancelled || fresh.activeRide?.id !== activeRideId) return;
+        setActiveRide(fresh.activeRide);
+      });
+    }
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+  }, [activeRideId, serverRenderedRideId]);
 
   /** Books, and lands the ride in local state. Shared by the plain path and the post-card retry. */
   function bookedRide(rideId: string, fareCents: number): ActiveRide {

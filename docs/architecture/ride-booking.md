@@ -11,8 +11,11 @@ way: `../decisions/0014-app-calls-complete-ride.md`.*
 
 **Status: the full loop is built.** `src/lib/rides/`, `/request` (rider), `/drive` (driver) — a
 ride can now go `requested → accepted → in_progress → completed` for real, for the first time.
-Not built: online/offline toggle, MTD tier-progress visualization, realtime (a rider or driver
-still only learns of a state change on reload), driver decline, dispatch or proximity matching.
+**Both live-ride surfaces are realtime** (ADR-0020): the rider's sheet and the driver's current-ride
+card move on their own, without a reload. A driver can decline a request or go offline (ADR-0019).
+Not built: MTD tier-progress visualization, dispatch or proximity matching, and realtime on the
+driver's *open pool* — that one is a whole-table subscription with its own authorization question,
+deferred in ADR-0020 rather than skipped.
 
 ## The rider flow
 
@@ -125,9 +128,29 @@ read, not an optimistic one. Priced the same live way `listOpenRequests` prices 
 `null` — `rides_one_active_per_driver` is what makes those mutually exclusive, so `/drive` doesn't
 even call `listOpenRequests` while a driver holds a live ride. **The availability toggle sits
 outside both**, right below the compliance card: a driver mid-ride has no pool panel, and going
-offline to signal "this is my last one" has to stay reachable. No realtime either way: a driver
-sees a request disappear (someone else took it) or the pool refresh only on reload, their next
-accept attempt, or a toggle.
+offline to signal "this is my last one" has to stay reachable. The current-ride card **is**
+realtime; the open pool is not, so a driver still sees a request disappear (someone else took it)
+only on reload, their next accept attempt, or a toggle. ADR-0020 says why the two are split.
+
+## Realtime, on both live-ride surfaces
+
+`subscribeToRide(rideId, onChange)` (`apps/web/src/lib/rides/realtime.ts`) is the only place
+`@supabase/`'s Realtime API is touched — the same opaque-handle boundary `apps/web/src/lib/maps/map.ts`
+holds for `mapbox-gl`, enforced by `scripts/check-context.mjs` rule 7 rather than by review.
+
+**`onChange` takes no arguments, and that is the whole design.** The event says "this ride moved";
+the handler then calls the same Server Action a page load calls — `getActiveRide()` /
+`getRecentlyCompletedRide()` on the rider side, `getDriverActiveRide()` on the driver's — and sets
+the result. The payload is never read. It could not do the job if it were: `driverPayoutCents` and
+`commissionRateBps` do not exist on an `'accepted'`/`'in_progress'` row at all
+(`rides_commission_present_iff_completed`), and `getDriverActiveRide()` computes them live through
+`commissionForRide()`. Patching a payout figure out of a raw row would break root invariant 5 at
+the exact site it guards. Full reasoning, including why the refetch is a Server Action rather than
+`router.refresh()`: ADR-0020.
+
+The one database change is `alter publication supabase_realtime add table rides`. **No RLS change** —
+Realtime authorizes every event through the policies already listed above, using the subscriber's
+own JWT, so this is a new channel for rows each party could already `SELECT`, not new access.
 
 ## One ride at a time, enforced by the database — both sides
 

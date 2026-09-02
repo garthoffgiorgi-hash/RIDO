@@ -5,9 +5,8 @@ never edit a migration that has been applied — add a new one.
 
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
 `ride_charges` · `rider_payment_profiles` · `ride_declines` · `commission_tiers` ·
-`fare_rate_cards`. Field-level
-detail: `docs/architecture/data-model.md`. Completion flow:
-`docs/architecture/ride-completion.md`. Payout flow: `docs/architecture/payouts.md`. Charge flow:
+`fare_rate_cards`. Field-level detail: `docs/architecture/data-model.md`. Flows:
+`docs/architecture/ride-completion.md` · `docs/architecture/payouts.md` ·
 `docs/architecture/rider-charging.md`.
 
 ## Schema rules
@@ -23,9 +22,9 @@ detail: `docs/architecture/data-model.md`. Completion flow:
 - **`driver_payouts` is a ledger, so its rows are append-mostly and its foreign keys are
   `on delete restrict`, not `cascade`** — a financial record blocks deleting the driver or ride it
   points at. `amount_cents` is `> 0` (Stripe rejects a zero transfer, and a zero payout means
-  something upstream computed wrongly), and `driver_payouts_transfer_id_iff_paid` makes a `paid`
-  row carry its receipt and a non-`paid` row never claim one. A correction is a **new row** — the
-  nullable `ride_id` exists for exactly that, and for the Prop 22 top-up. (ADR-0015)
+  something upstream computed wrongly), and `driver_payouts_transfer_id_iff_paid` makes a `paid` row
+  carry its receipt and a non-`paid` row never claim one. A correction is a **new row** — the
+  nullable `ride_id` is for exactly that, and for the Prop 22 top-up. (ADR-0015)
 - `commission_tiers` is configuration, not code. Changing a rate is a row change, not a deploy.
   Tiers carry `effective_from` and `active` so a change is auditable rather than destructive.
 - The driver activation gate is a **check constraint plus RLS**, not application logic:
@@ -34,11 +33,10 @@ detail: `docs/architecture/data-model.md`. Completion flow:
   `America/Los_Angeles` by the one canonical `rido_year_month()` function — never re-derived at
   a call site — with a unique constraint on `(driver_id, year_month)`.
 - Migration filenames: `<timestamp>_<verb>_<subject>.sql`. One concern per migration.
-- **Grant base table privileges explicitly — don't assume Supabase does it for you.** Supabase
-  used to grant `anon`/`authenticated`/`service_role` access to every new `public` table by
-  default; as of an April 2026 platform change that's an opt-in project setting, not a
-  guarantee. RLS only matters once a role can reach the table at all, so every migration here
-  pairs its `CREATE POLICY` statements with an explicit `GRANT`.
+- **Grant base table privileges explicitly — don't assume Supabase does it for you.** It used to
+  grant `anon`/`authenticated`/`service_role` on every new `public` table; as of an April 2026
+  platform change that's an opt-in project setting. RLS only matters once a role can reach the table
+  at all, so every migration here pairs its `CREATE POLICY` statements with an explicit `GRANT`.
 
 ## RLS
 
@@ -62,15 +60,19 @@ detail: `docs/architecture/data-model.md`. Completion flow:
   `authenticated` — the rider booking flow (ADR-0012) and driver accept (ADR-0013) both write
   through the service role instead, gated by `requireUser()` inside the function rather than by a
   policy.
-- **A nullable column compared with `IN (subquery)` in an RLS policy silently hides rows where
-  it's null** — SQL's three-valued logic makes the comparison neither `TRUE` nor `FALSE`, and RLS
-  refuses anything short of `TRUE`. This bit `rides_select_own_as_driver` the moment `driver_id`
-  became nullable (ADR-0012): every open request was invisible to every driver until ADR-0013
-  added a policy that checks `driver_id IS NULL` explicitly instead. No fixture caught it because
-  every prior `rides` row in the test suite bound a driver at insert. Worth checking for on the
-  next nullable column added to a table with an `IN (subquery)` policy already on it.
+- **A nullable column compared with `IN (subquery)` in an RLS policy silently hides rows where it's
+  null** — three-valued logic makes it neither `TRUE` nor `FALSE`. This bit `rides_select_own_as_driver`
+  when `driver_id` became nullable (ADR-0012): every open request was invisible until ADR-0013 added
+  a policy checking `driver_id IS NULL` explicitly. Check for it on the next nullable column added to
+  a table already carrying an `IN (subquery)` policy.
 - Commission columns on `rides` are writable **only by the service role**. Not by the driver, not
   by the rider, not by an authenticated user with a clever payload.
+- **`rides` is the one table in the `supabase_realtime` publication.** Realtime authorizes every
+  event through the policies above using the subscriber's own JWT — a new *channel* for rows each
+  party could already `SELECT`, never new access, no policy change. `postgres_changes` broadcasts
+  the whole NEW row with no column scoping; `REPLICA IDENTITY` stays `DEFAULT`. Membership is opt-in
+  per table and fails **silently** — no error, just no events — which is why `019_ride_realtime.sql`
+  asserts it. (ADR-0020)
 - Write a pgTAP test for every policy. A policy with no test is an assumption.
 
 ## Edge Functions
@@ -133,33 +135,31 @@ detail: `docs/architecture/data-model.md`. Completion flow:
   can ever match the predicate. (ADR-0014)
 - **A completed ride and the debt it creates are one atomic act.** `queue_driver_payout()` fires on
   the same `→ completed` transition `bump_monthly_stats` watches, inserting the `driver_payouts` row
-  *inside* the completion transaction — so no application bug, crash or network failure can complete
-  a ride without recording what it owes. It is a local insert with no network call, which is why it
-  is allowed inside the critical section ADR-0008 guards. It copies `driver_payout_cents` verbatim
-  and computes nothing (root invariant 5), skips a zero payout rather than writing one, and
-  `on conflict do nothing` against `driver_payouts_one_per_ride` makes a re-fired trigger a no-op.
-  **Paying is deliberately not part of this transaction** — the transfer is an app-side, retryable
-  step against the row the trigger left behind. (ADR-0015)
+  *inside* the completion transaction — a local insert with no network call, allowed inside the
+  critical section ADR-0008 guards, so no crash can complete a ride without recording what it owes.
+  It copies `driver_payout_cents` verbatim (root invariant 5), skips a zero payout rather than
+  writing one, and `on conflict do nothing` makes a re-fired trigger a no-op. **Paying is
+  deliberately not part of this transaction** — the transfer is an app-side, retryable step against
+  the row the trigger left behind. (ADR-0015)
 - **`ride_charges` is the inbound mirror of `driver_payouts`**: same `on delete restrict`, same
   read-own/write-none RLS, `ride_charges_captured_iff_settled` so no row records money as taken
   without its receipt, ADR-0016's attempt claim from the start. **No `kind` column** — a cancellation
-  fee is a partial capture of the same hold, so what a captured row was *for* is answered by
-  `rides.status`, once. A canceled ride pays its driver via `queue_cancellation_payout()`, and **the
-  fee must be captured before the status flips**, since that trigger reads the captured row.
+  fee is a partial capture of the same hold, so what a captured row was *for* is answered once, by
+  `rides.status`. **The fee must be captured before the status flips to `canceled`**:
+  `queue_cancellation_payout()` reads the captured row.
 - **`rides.rider_total_cents` is what the rider pays; `fare_cents` is what commission splits** —
   equal until a `FareLineItem` exists, with `>= fare_cents` enforced. Commission still binds
   `fare_cents` alone, so `rides_commission_sums_to_fare` is untouched: a pass-through is money RIDO
   collects and remits, never revenue to split. (ADR-0017, ADR-0018)
 - **A retry needs its own claim, not just a stable idempotency key.** `claim_driver_payout_attempt`
   hands out an attempt number, folded into `<payout id>_<attempt>` as Stripe's key, so a genuinely
-  new retry is genuinely new to Stripe rather than a replay of the row's first cached response — a
-  payout id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same
-  one-conditional-`UPDATE`-is-the-lock shape as driver accept: `WHERE settling = false` (or stale
-  past two minutes, recovering an abandoned attempt) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
-  function's row shapes stop being hand-written projections — **done**, against every migration
-  through the rider-charging ones. `apps/web/src/lib/payouts/types.ts` and
-  `apps/web/src/lib/payments/types.ts` are stopgaps that predate that run; deleting both is a live follow-up now, not a future one.
+  new retry is genuinely new to Stripe rather than a replay of the first cached response — a payout
+  id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
+  conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
+  minutes) is the entire mechanism. (ADR-0016)
+- Regenerate `database.types.ts` (`npm run types:generate`) after migrations. Done through the
+  rider-charging ones; `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts`
+  are stopgaps predating that run — deleting both is a live follow-up, not a future one.
 
 ## Tests (`supabase/tests/`, pgTAP)
 
@@ -187,8 +187,8 @@ pgTAP alone can prove the rollup's *arithmetic* but not true concurrent-connecti
 `concurrent-completion.sh` (plain `psql`, no added dependency) is the standalone proof that
 `reserve_driver_month()` actually blocks a second completion rather than letting it read a stale
 month-to-date figure. `concurrent-accept-ride.sh` proves the same class of thing for accept — two
-connections racing one ride, asserting exactly one wins and the loser genuinely blocked rather than
-losing by luck — even though accept needs no lock of its own to get there (ADR-0013).
+connections racing one ride, exactly one winning and the loser genuinely blocked rather than losing
+by luck — even though accept needs no lock of its own to get there (ADR-0013).
 `concurrent-payout-claim.sh` proves the same for `claim_driver_payout_attempt` (ADR-0016): two
 `settle()` calls racing one payout, asserting the loser blocks and gets `null`, never a second
 attempt number. Run these manually against a real instance; none is part of `test db`.

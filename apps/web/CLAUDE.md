@@ -127,8 +127,8 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
 - **A hold is placed on a ride that already exists.** `requestRide()` inserts first, authorizes
   second, and **cancels the row back if the authorization fails** — a stranded `'requested'` ride
   would block the rider from booking anything (`rides_one_active_per_rider`).
-- **Cancellation: capture the fee, THEN flip the status.** `queue_cancellation_payout()` reads the
-  captured charge, so the reverse order silently pays nobody. ADR-0018.
+- **Cancellation: capture the fee, flip the status, send the payout — all three, in order.**
+  `cancelRide()` calls `payoutRide()` itself, since unlike a completed ride, nothing else ever will. ADR-0018.
 - **The webhook reads the raw body** (`await request.text()` — a parsed body can't be
   signature-verified) and every handler writes **state, not deltas**, which is why no processed-event
   table exists. The first delta-applying handler needs one.

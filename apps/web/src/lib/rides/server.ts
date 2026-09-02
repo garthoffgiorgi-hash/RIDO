@@ -22,6 +22,7 @@ import {
   getPaymentProfile,
   voidRideCharge,
 } from "@/lib/payments/server.ts";
+import { payoutRide } from "@/lib/payouts/server.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 import { canAcceptRide, type OpenRide } from "./accept.ts";
@@ -327,6 +328,25 @@ export async function cancelRide(rideId: string): Promise<RidesResult<Cancellati
   if (updateError) {
     return failed("We couldn't cancel that ride. Try again in a moment.");
   }
+
+  // `queue_cancellation_payout()` fires inside the UPDATE above and has already inserted the
+  // `driver_payouts` row by the time this runs — but inserting it is all that trigger does. Unlike
+  // a completed ride, nothing else in this app ever revisits a cancellation-fee payout on its own:
+  // `settlePendingPayoutsForDriver()` only runs on the driver's Connect-onboarding-return leg, and
+  // `/drive` offers no retry affordance for a `pending` row (only `failed` ones get one). Without
+  // this call, a late-cancellation fee would sit `pending` forever with nothing left to send it —
+  // the same best-effort chain `completeRide()` runs for a fare, at the equivalent point.
+  if (feeChargedCents > 0) {
+    try {
+      await payoutRide(rideId);
+    } catch (cause) {
+      console.error("payouts: payoutRide threw after a cancellation fee capture", {
+        rideId,
+        cause,
+      });
+    }
+  }
+
   return { ok: true, data: { feeChargedCents } };
 }
 

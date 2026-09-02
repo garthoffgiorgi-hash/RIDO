@@ -402,10 +402,12 @@ export async function payoutRide(rideId: string): Promise<PayoutsResult<SettleOu
  * Called once, on the onboarding-return leg (`(driver)/drive/page.tsx`), the moment a driver's
  * Connect status is freshly known. A ride completed *before* onboarding finished leaves its
  * `driver_payouts` row `pending` by design — see `settle`'s docstring — and nothing else ever
- * revisits it: `payoutRide` only fires once, right after the ride that created the row. Nor does
- * `/drive` offer a button for it: `brand/design-system.md` is explicit that a `pending` row never
- * gets Retry's styling, since it isn't an error. So the payout has to be pulled forward here
- * instead of waited on indefinitely.
+ * revisits it for THAT reason: `payoutRide` fires once, right after the event that created the
+ * row (a completed ride's fare, or — since ADR-0018 — a captured late-cancellation fee), and
+ * neither caller retries a `pending` result on its own. Nor does `/drive` offer a button for it:
+ * `brand/design-system.md` is explicit that a `pending` row never gets Retry's styling, since it
+ * isn't an error. So a payout stranded by onboarding still not being done has to be pulled forward
+ * here instead of waited on indefinitely.
  *
  * One row failing (Stripe down, say) must not stop the rest — each reuses `settle`'s own
  * retryable/failed classification, so a genuine failure still lands as `failed`, visible on

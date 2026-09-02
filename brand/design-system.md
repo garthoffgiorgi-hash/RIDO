@@ -135,10 +135,19 @@ the first number in this app ever computed by the deployed `complete-ride` funct
 locally. Above both sits `PayoutCard` (ADR-0015) — an **Earnings** card leading with the amount
 already sent to the driver's bank as a `Fare`, then anything still owed. Until Connect onboarding
 finishes it carries an Accent/live button ("Connect your bank", or "Finish payout setup" once
-started) into Stripe's hosted flow, since RIDO never collects a bank detail itself. Not built: the
-online/offline toggle (availability means little while a driver pulls from a list rather than
-dispatch pushing to them), month-to-date earnings and tier-progress visualization, and decline
-(there's no reason yet to refuse one request in favor of scanning for another).
+started) into Stripe's hosted flow, since RIDO never collects a bank detail itself.
+
+**The toggle and decline are built (ADR-0019).** Availability is a two-option `SegmentedControl`
+("Offline | Online") sitting directly under the compliance card, above both panels — a driver
+mid-ride still needs to reach it. The control gains an `accent` tone for exactly this use, so the
+active *Online* segment fills Signal per section 3's "online = Signal"; every other segmented
+control on the auth surfaces keeps the white-active default. Decline is deliberately the quieter
+half of the request card: a small `ghost` control, never a second full-width button under Accept,
+because one mis-tap on a phone permanently removes a request a driver wanted and the product has no
+undo. While offline the board stays fully visible and Accept is disabled — with the reason in
+rendered text at the top of the panel, once, not a tooltip (a disabled `Button` carries
+`pointer-events-none`, so it can never show one) and not repeated on every card. Not built:
+month-to-date earnings and tier-progress visualization.
 
 **The hold is disclosed, never discovered.** A rider is told what will be held and what will be
 charged, before they tap — "we'll hold a little more than this while you ride, and charge $X when

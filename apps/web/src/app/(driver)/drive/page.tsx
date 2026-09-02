@@ -10,6 +10,7 @@ import {
   settlePendingPayoutsForDriver,
 } from "@/lib/payouts/server";
 import { getDriverActiveRide, listOpenRequests } from "@/lib/rides/server";
+import { AvailabilityToggle } from "./AvailabilityToggle";
 import { CurrentRidePanel } from "./CurrentRidePanel";
 import { OpenRequestsPanel } from "./OpenRequestsPanel";
 import { PayoutCard } from "./PayoutCard";
@@ -22,7 +23,9 @@ import { PayoutCard } from "./PayoutCard";
  * (`OpenRequestsPanel`, ADR-0013) — `rides_one_active_per_driver` guarantees these are mutually
  * exclusive, so `listOpenRequests` doesn't even run when a current ride exists — and the payout
  * card (`PayoutCard`, ADR-0015), which is where a driver connects a bank and sees what they've
- * been paid. Online/offline toggle and MTD tier-progress visualization are still roadmap Phase 3.
+ * been paid. `AvailabilityToggle` (ADR-0019) sits above both panels rather than inside either,
+ * since a driver holding a live ride must still be able to go offline. MTD tier-progress
+ * visualization is still roadmap Phase 3.
  *
  * Reachable by anyone signed in, driver or not: someone without a `drivers` row sees an honest
  * "you haven't applied" state rather than being redirected away, since there's no self-serve
@@ -50,12 +53,15 @@ export default async function DrivePage({
     await settlePendingPayoutsForDriver(driver);
   }
 
-  // Re-read after any refresh above, so the card renders the state we just synced.
+  // Re-read after any refresh above, so the card renders the state we just synced. Everything
+  // below reads `freshDriver`, not `driver` — on the onboarding-return leg `driver` is the
+  // pre-refresh row, and having half the page render one and half the other is a fork waiting to
+  // show someone stale state.
   const freshDriver = onboarding === "return" ? await getOwnDriverProfile(user) : driver;
 
-  const currentRide = active && driver ? await getDriverActiveRide(driver) : null;
+  const currentRide = active && freshDriver ? await getDriverActiveRide(freshDriver) : null;
   const hasNoActiveRide = currentRide?.ok && currentRide.data === null;
-  const openRequests = hasNoActiveRide && driver ? await listOpenRequests(driver) : null;
+  const openRequests = hasNoActiveRide && freshDriver ? await listOpenRequests(freshDriver) : null;
   const payouts = active && freshDriver ? await getPayoutSummary(freshDriver) : null;
 
   return (
@@ -99,6 +105,12 @@ export default async function DrivePage({
           )}
         </Card>
 
+        {/* Above both panels on purpose: a driver mid-ride has no board, and going offline to
+            signal "this is my last one" has to stay reachable (ADR-0019). */}
+        {active && freshDriver && (
+          <AvailabilityToggle acceptingRides={freshDriver.accepting_rides} />
+        )}
+
         {currentRide && !currentRide.ok && (
           <p className="text-[13px] text-danger">{currentRide.message}</p>
         )}
@@ -107,7 +119,10 @@ export default async function DrivePage({
 
         {openRequests &&
           (openRequests.ok ? (
-            <OpenRequestsPanel initialRequests={openRequests.data} />
+            <OpenRequestsPanel
+              initialRequests={openRequests.data}
+              acceptingRides={freshDriver?.accepting_rides ?? false}
+            />
           ) : (
             <p className="text-[13px] text-danger">{openRequests.message}</p>
           ))}

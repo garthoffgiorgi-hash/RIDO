@@ -12,7 +12,11 @@
  * Pure — no I/O, safe to test without a database. The Supabase read/write lives in `./server.ts`.
  */
 
-export type AcceptRefusal = "driver_not_active" | "ride_taken" | "ride_not_open";
+export type AcceptRefusal =
+  | "driver_not_active"
+  | "driver_not_accepting"
+  | "ride_taken"
+  | "ride_not_open";
 
 export type AcceptDecision =
   | { readonly allowed: true }
@@ -24,24 +28,50 @@ export interface OpenRide {
 }
 
 /**
- * Whether `driverStatus` may accept `ride`.
+ * The two facts about the CALLER this rule needs. Deliberately not `DriverProfile`, which is the
+ * generated `drivers` row — depending on it here would drag the database's schema types into a
+ * file whose whole point is being dependency-free, and would make every test fixture twenty
+ * columns wide to assert one boolean.
+ */
+export interface AcceptingDriver {
+  readonly status: string;
+  readonly acceptingRides: boolean;
+}
+
+/**
+ * Whether `driver` may accept `ride`.
  *
- * Compliance is checked first, before anything about the ride's own state — root `CLAUDE.md`
- * invariant 6, and the same ordering discipline `authorizeCompletion` uses: an inactive driver
- * gets refused for that reason even if the ride is also already taken, not whichever check
- * happens to run first.
+ * **Properties of the caller are checked before properties of the subject.** That is the rule the
+ * ordering follows, and why compliance comes first (root `CLAUDE.md` invariant 6, the same
+ * discipline `authorizeCompletion` uses) with availability beside it: an inactive driver is
+ * refused for *that* reason even when the ride is also already taken, and an offline one is told
+ * they're offline rather than sent to hunt for a different request that would refuse them too.
+ *
+ * `driver_not_accepting` is defense in depth rather than the main gate — `/drive` disables Accept
+ * while offline, so reaching this refusal means a stale tab or a direct Server Action call.
+ * Availability gates *taking new work and never finishing committed work*, which is why
+ * `canStartTrip()` and the completion path deliberately do not consult it: a driver may go offline
+ * mid-ride and still carry that rider to their destination (ADR-0019).
  *
  * Two distinct ride-state refusals, not one generic "unavailable": `ride_taken` (another driver
  * already has it) and `ride_not_open` (the rider canceled it, or it moved on without this driver)
  * read differently to someone deciding whether to try a different open request or reload the
  * list.
  */
-export function canAcceptRide(ride: OpenRide, driverStatus: string): AcceptDecision {
-  if (driverStatus !== "active") {
+export function canAcceptRide(ride: OpenRide, driver: AcceptingDriver): AcceptDecision {
+  if (driver.status !== "active") {
     return {
       allowed: false,
       refusal: "driver_not_active",
-      message: `Your driver account is '${driverStatus}'. Only an active account can accept rides.`,
+      message: `Your driver account is '${driver.status}'. Only an active account can accept rides.`,
+    };
+  }
+
+  if (!driver.acceptingRides) {
+    return {
+      allowed: false,
+      refusal: "driver_not_accepting",
+      message: "You're offline. Go online to accept rides.",
     };
   }
 

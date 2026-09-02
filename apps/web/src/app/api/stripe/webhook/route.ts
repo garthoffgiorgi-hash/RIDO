@@ -34,6 +34,7 @@ import {
  */
 const HANDLED = new Set([
   "account.updated",
+  "payment_intent.amount_capturable_updated",
   "payment_intent.succeeded",
   "payment_intent.payment_failed",
   "payment_intent.canceled",
@@ -84,6 +85,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (
+    event.type === "payment_intent.amount_capturable_updated" ||
     event.type === "payment_intent.succeeded" ||
     event.type === "payment_intent.payment_failed" ||
     event.type === "payment_intent.canceled"
@@ -93,12 +95,18 @@ export async function POST(request: NextRequest) {
     // The app already records these when it makes the call itself — this is reconciliation, for
     // the cases the app never saw: a rider who completed a 3DS challenge after closing the tab, a
     // hold Stripe expired on its own a week later, a capture whose response was lost in transit.
+    // `amount_capturable_updated` fires on every successful manual-capture authorization, so it is
+    // an idempotent no-op on the synchronous no-3DS path — but on the `requires_action` path it is
+    // the ONLY thing that ever writes `authorized`: `completeAuthorization()` resolves the challenge
+    // with Stripe directly from the browser, with no server round trip to write it there instead.
     const status =
-      event.type === "payment_intent.succeeded"
-        ? ("captured" as const)
-        : event.type === "payment_intent.canceled"
-          ? ("voided" as const)
-          : ("failed" as const);
+      event.type === "payment_intent.amount_capturable_updated"
+        ? ("authorized" as const)
+        : event.type === "payment_intent.succeeded"
+          ? ("captured" as const)
+          : event.type === "payment_intent.canceled"
+            ? ("voided" as const)
+            : ("failed" as const);
 
     const synced = await syncChargeFromWebhook(
       intent.id,

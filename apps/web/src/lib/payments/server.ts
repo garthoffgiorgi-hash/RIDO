@@ -505,10 +505,18 @@ export async function voidRideCharge(rideId: string): Promise<ChargeOutcome> {
  * applying a delta, which is what keeps the webhook route idempotent without a processed-event
  * table — the same property `account.updated` has, and the route's header comment explains why it
  * matters.
+ *
+ * **`authorized` is what closes the 3DS gap.** `authorizeRideCharge()` only writes `authorized`
+ * itself on the synchronous, no-challenge path — when the rider's bank asks a question, the row is
+ * left `authorizing` and nothing else in this app ever moves it on: `completeAuthorization()`
+ * resolves the challenge with Stripe directly from the browser, with no server round trip.
+ * `payment_intent.amount_capturable_updated` is Stripe's own signal that the hold is now actually
+ * in place, and reconciling on it is what lets a charge stop being stuck at `authorizing` forever
+ * once the bank has said yes.
  */
 export async function syncChargeFromWebhook(
   paymentIntentId: string,
-  status: "captured" | "failed" | "voided",
+  status: "authorized" | "captured" | "failed" | "voided",
   capturedCents: number | null,
   failureReason: string | null,
 ): Promise<PaymentsResult<null>> {
@@ -522,8 +530,9 @@ export async function syncChargeFromWebhook(
     .update(patch)
     .eq("stripe_payment_intent_id", paymentIntentId)
     // Never walk a settled charge backwards. Stripe can deliver events out of order, and a late
-    // `payment_failed` for an intent that was subsequently captured must not un-capture it.
-    .neq("status", "captured");
+    // event for an intent already `captured`, `voided`, or `failed` must not regress it — those
+    // are terminal; `authorizing`/`authorized` are the only states still in motion.
+    .not("status", "in", "(captured,voided,failed)");
 
   if (error) return failed("We couldn't record that payment update.");
   return { ok: true, data: null };

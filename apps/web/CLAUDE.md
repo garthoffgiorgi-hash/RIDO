@@ -135,8 +135,8 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
 - **Stripe's word, not the user's.** The `drivers.stripe_*` columns and every
   `rider_payment_profiles` column sit outside the `authenticated` `UPDATE` grant. Onboarding links
   and SetupIntent secrets are single-use — one per attempt, never cached.
-- `src/lib/payouts/types.ts` and `src/lib/payments/types.ts` are **temporary** bridges; delete both
-  the moment `npm run types:generate` runs against the pushed migrations.
+- `src/lib/payouts/types.ts` and `src/lib/payments/types.ts` are **temporary** bridges, kept past
+  their trigger: `types:generate` has now run, so deleting both is a live follow-up, not a future one.
 
 ## Maps
 

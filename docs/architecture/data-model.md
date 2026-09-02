@@ -7,8 +7,8 @@
 > `../decisions/0002-bracketed-per-ride-commission.md`.
 >
 > **Status: built and verified** (migrations applied and exercised against a real Postgres —
-> constraints, triggers, and RLS all confirmed to do what this doc says; `pg_prove` green).
-> Not yet applied to the live project — that's a manual step, see `supabase/CLAUDE.md`.
+> constraints, triggers, and RLS all confirmed to do what this doc says; `pg_prove` green) —
+> **and applied to the live project**, with `database.types.ts` regenerated against it.
 
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.

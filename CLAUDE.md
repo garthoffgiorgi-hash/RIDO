@@ -14,17 +14,19 @@ math** in `packages/pricing` — commission, fare quoting, and the Prop 22 floor
 a route, proven end to end at `/dev/maps` against a real account), the **full ride lifecycle**
 (`requested → accepted → in_progress → completed`: a rider books at `/request`, a driver accepts,
 starts and completes at `/drive`, which calls `complete-ride` and gets a real commission snapshot —
-ADR-0012, ADR-0013, ADR-0014), and **driver payouts** (a `driver_payouts` ledger written by trigger
-inside the completion transaction, then a Stripe Connect transfer to the driver's own connected
-account — ADR-0015).
+ADR-0012, ADR-0013, ADR-0014), and **the full money loop, both directions, verified live against
+real Stripe test keys.** A rider saves a card and books against a hold (`ride_charges`, ADR-0017);
+completion captures the fare *before* transferring the driver's cut, which is what funds the
+platform balance the transfer draws on; a late cancellation captures a fee from that hold and pays
+it to the driver in full (ADR-0018). Proven end to end, not just in principle: a saved card, a
+buffered hold, a 3DS challenge, a decline, a captured fare with a real driver transfer following it,
+and a captured cancellation fee with its own real transfer.
 
-**Not built — and this is the one that matters:** **nothing charges a rider.** There is no
-PaymentIntent, no saved card, no rider-side Stripe at all, so RIDO's platform balance is empty and
-a *production* transfer returns `balance_insufficient`. The ledger holds it as `pending` rather
-than losing it, and Stripe test mode proves the whole path today, but the loop is a half-loop until
-the inbound side ships. Also not built: flat-fee subscription billing (deliberate — ADR-0003 puts
-the fee at $0 for the whole pilot), the native driver app, dispatch/proximity matching, and
-anything realtime (every state change appears on reload).
+**Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
+whole pilot), the native driver app, dispatch/proximity matching, driver decline, an
+online/offline toggle, and anything realtime — a rider or driver still only learns a ride moved on
+when they reload. None of these block the business model the way an empty platform balance did;
+they're the day-to-day usability gaps left once the money itself moves correctly both ways.
 
 **Partially built:**
 
@@ -41,8 +43,8 @@ anything realtime (every state change appears on reload).
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.
 
 **Target stack:** Next.js (App Router) + TypeScript + Tailwind on Vercel · Supabase (Postgres +
-RLS + Edge Functions, Deno) · Supabase Auth · Stripe (subscriptions for the flat fee, Connect for
-payouts) · Mapbox.
+RLS + Edge Functions, Deno) · Supabase Auth · Stripe (PaymentIntents for rider charging, Connect
+for payouts, subscriptions for the future flat fee) · Mapbox.
 
 ## Where things live
 

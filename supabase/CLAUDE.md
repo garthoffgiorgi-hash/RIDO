@@ -154,9 +154,9 @@ detail: `docs/architecture/data-model.md`. Completion flow:
   one-conditional-`UPDATE`-is-the-lock shape as driver accept: `WHERE settling = false` (or stale
   past two minutes, recovering an abandoned attempt) is the entire mechanism. (ADR-0016)
 - Regenerate `database.types.ts` (`npm run types:generate`) after applying migrations, so a
-  function's row shapes stop being hand-written projections. The payouts migration adds a table and
-  two columns, so it is the first since `007` that genuinely needs this;
-  `apps/web/src/lib/payouts/types.ts` is a documented stopgap until it runs.
+  function's row shapes stop being hand-written projections — **done**, against every migration
+  through the rider-charging ones. `apps/web/src/lib/payouts/types.ts` and
+  `apps/web/src/lib/payments/types.ts` are stopgaps that predate that run; deleting both is a live follow-up now, not a future one.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

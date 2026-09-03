@@ -136,7 +136,7 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
 - **Stripe's word, not the user's.** The `drivers.stripe_*` columns and every
   `rider_payment_profiles` column sit outside the `authenticated` `UPDATE` grant. Onboarding links
   and SetupIntent secrets are single-use — one per attempt, never cached.
-- **Row shapes are derived from `src/types/database.types.ts`, never restated.** The two `types.ts` bridges that hand-declared them are deleted. Where a column is `text` + CHECK rather than an enum, the generator can only say `string`, so `PayoutStatus`/`ChargeStatus` narrow it — the one thing worth writing by hand, and only that. Two stopgaps remain because the generated file is one run behind: see `supabase/CLAUDE.md`.
+- **Row shapes are derived from `src/types/database.types.ts`, never restated.** The two `types.ts` bridges that hand-declared them are deleted, and the last two per-column stopgaps are gone with them — the generated file now covers all ten tables. Where a column is `text` + CHECK rather than an enum, the generator can only say `string`, so `PayoutStatus`/`ChargeStatus` narrow it — the one thing still worth writing by hand.
 
 ## Maps
 

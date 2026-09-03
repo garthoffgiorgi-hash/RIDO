@@ -32,12 +32,16 @@ accept/start/complete, online/offline plus per-driver decline (ADR-0019), the pa
 now month-to-date tier progress (`TierProgress` — the graduated bands filling, month earnings, and
 what the next tier pays, all read from `driver_monthly_stats`, never recomputed).
 
+**Realtime now covers the driver's open pool too** (ADR-0021). New requests appear on every active
+driver's board on their own. Removals — a ride another driver took — **structurally cannot** arrive
+over that channel: the row leaves the other drivers' RLS visibility at the instant it is taken, so
+there is no subscriber left to notify. Mitigated by refetching on any arrival and on tab focus,
+never by widening the policy.
+
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
-whole pilot), the native driver app, dispatch/proximity matching, and realtime on the driver's
-*open pool* — a whole-table subscription with its own authorization question, deferred in
-ADR-0020 rather than skipped. None of these block the business model the way an empty platform
-balance did; they're the day-to-day usability gaps left once the money itself moves correctly both
-ways.
+whole pilot), the native driver app, and dispatch/proximity matching. Neither blocks the business
+model the way an empty platform balance did; they're the day-to-day usability gaps left once the
+money itself moves correctly both ways.
 
 **Partially built:**
 

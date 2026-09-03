@@ -14,9 +14,10 @@ ride can now go `requested → accepted → in_progress → completed` for real,
 **Both live-ride surfaces are realtime** (ADR-0020): the rider's sheet and the driver's current-ride
 card move on their own, without a reload. A driver can decline a request or go offline (ADR-0019),
 and sees their own month-to-date tier progress (`TierProgress`,
-`apps/web/src/lib/commission/server.ts`'s `getDriverTierProgress()`). Not built: dispatch or proximity matching, and realtime on the driver's
-*open pool* — that one is a whole-table subscription with its own authorization question, deferred
-in ADR-0020 rather than skipped.
+`apps/web/src/lib/commission/server.ts`'s `getDriverTierProgress()`). **The open-pool board is
+realtime for arrivals** (ADR-0021) — a new request appears without a reload — but not for removals,
+which cannot be delivered at all: a taken ride leaves the other drivers' RLS visibility at the
+instant it is taken. Not built: dispatch or proximity matching.
 
 ## The rider flow
 
@@ -130,8 +131,9 @@ read, not an optimistic one. Priced the same live way `listOpenRequests` prices 
 even call `listOpenRequests` while a driver holds a live ride. **The availability toggle sits
 outside both**, right below the compliance card: a driver mid-ride has no pool panel, and going
 offline to signal "this is my last one" has to stay reachable. The current-ride card **is**
-realtime; the open pool is not, so a driver still sees a request disappear (someone else took it)
-only on reload, their next accept attempt, or a toggle. ADR-0020 says why the two are split.
+realtime; the open pool is realtime for arrivals only (ADR-0021), so a request *disappearing*
+(someone else took it) still waits for a reload, a tab switch, the next arrival, or the accept
+attempt's own clean refusal. ADR-0020 says why the two are split.
 
 ## Realtime, on both live-ride surfaces
 

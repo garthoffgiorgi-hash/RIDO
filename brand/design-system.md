@@ -148,6 +148,12 @@ undo. While offline the board stays fully visible and Accept is disabled — wit
 rendered text at the top of the panel, once, not a tooltip (a disabled `Button` carries
 `pointer-events-none`, so it can never show one) and not repeated on every card.
 
+**The open-request board updates itself** (ADR-0021): a new request appears without a reload. A
+ride another driver took cannot arrive over that channel — it leaves the rest of the pool's
+visibility the moment it is claimed — so it clears on the next arrival, on returning to the tab, or
+on the accept attempt's existing refusal. No spinner, no connection state, nothing announcing the
+socket; the board simply gains a card.
+
 **Month-to-date tier progress is built**, as `TierProgress` — sitting between the ride panels and
 `PayoutCard`, the month's *rate* story before its *cash* story. The graduated bands fill left to
 right, one segment per tier, widths proportional to each band's real width; the unbounded top band

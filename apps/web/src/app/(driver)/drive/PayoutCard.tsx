@@ -19,6 +19,12 @@ import { retryPayout, startConnectOnboarding } from "./actions";
  * The distinction the copy works hardest at: **pending is not failure.** A driver who hasn't
  * finished Connect onboarding, or whose transfer hit a retryable error, has money that is recorded
  * and theirs. Saying "failed" there would be both wrong and alarming.
+ *
+ * The second distinction, added after a driver compared this card with `TierProgress` above it and
+ * found they disagreed (ADR-0021): **these totals are all time, and they count cash Stripe has
+ * sent.** `getPayoutSummary` sums every `driver_payouts` row with no month filter, and the ledger
+ * carries cancellation fees that `driver_monthly_stats` structurally cannot. Both cards are
+ * correct; they measure different things, so the copy has to say which.
  */
 export function PayoutCard({ summary }: { summary: PayoutSummary }) {
   const router = useRouter();
@@ -26,6 +32,7 @@ export function PayoutCard({ summary }: { summary: PayoutSummary }) {
   const [error, setError] = useState<string | null>(null);
 
   const connected = summary.connectStatus === "enabled";
+  const hasMoney = summary.paidCents > 0 || summary.pendingCents > 0 || summary.failedCents > 0;
 
   async function handleConnect() {
     setBusy(true);
@@ -63,7 +70,7 @@ export function PayoutCard({ summary }: { summary: PayoutSummary }) {
 
       <div>
         <Fare cents={summary.paidCents} />
-        <p className="tabular text-[13px] text-slate">sent to your bank</p>
+        <p className="tabular text-[13px] text-slate">sent to your bank, all time</p>
       </div>
 
       {summary.pendingCents > 0 && (
@@ -75,6 +82,15 @@ export function PayoutCard({ summary }: { summary: PayoutSummary }) {
       {summary.failedCents > 0 && (
         <p className="tabular text-[13px] text-danger">
           {formatCents(summary.failedCents)} couldn&apos;t be sent
+        </p>
+      )}
+
+      {/* Only once there's money to explain — a driver with nothing yet doesn't need a footnote.
+          Names both reasons this total can exceed the month card above it. */}
+      {hasMoney && (
+        <p className="text-[13px] text-slate">
+          Every ride you&apos;ve driven, cancellation fees included. This month&apos;s fares are in
+          the card above.
         </p>
       )}
 

@@ -7,7 +7,7 @@
 -- a calculation, not by multiplying by one — so the test that would catch a future split going in
 -- silently is a test that the amounts are equal.
 begin;
-select plan(9);
+select plan(11);
 
 insert into auth.users (id) values
   ('c2000000-0000-0000-0000-000000000001'),  -- rider, late cancel
@@ -120,6 +120,34 @@ select is(
      where ride_id = (select id from t_ids where label = 'ride_free'))::int,
   0,
   'a cancel inside the grace window captures nothing and owes nobody'
+);
+
+-- ------------------------------ and the month rollup never hears about it (ADR-0021's trap)
+--
+-- driver_monthly_stats is a FARE rollup, not an earnings ledger. bump_monthly_stats fires only on
+-- '-> completed'; queue_cancellation_payout fires on '-> canceled'. So a captured fee reaches
+-- driver_payouts and never reaches the rollup, which is why /drive's tier card and its Earnings
+-- card legitimately disagree.
+--
+-- The tempting "fix" is to reconcile them by folding fees into the rollup. That would be a money
+-- bug: driver_monthly_stats_sums_to_gross enforces commission_cents + payout_cents =
+-- gross_fare_cents, so a fee either violates the CHECK or inflates gross_fare_cents — and
+-- gross_fare_cents is the basis commissionForRide brackets against, so inflating it silently
+-- changes the rate the driver's NEXT ride is charged. This assertion is here to make that attempt
+-- fail loudly rather than ship.
+
+select is(
+  (select count(*) from driver_monthly_stats
+     where driver_id = (select id from t_ids where label = 'driver'))::int,
+  0,
+  'a canceled ride writes no month rollup row at all — the fee is earnings, but it is not fare volume'
+);
+
+select is(
+  (select count(*) from driver_payouts
+     where driver_id = (select id from t_ids where label = 'driver'))::int,
+  1,
+  'while the payout ledger does carry it — the two cards read different tables on purpose, and reconciling them would move the driver''s tier position'
 );
 
 -- ------------------------------------------- a cancel before dispatch: no driver, nothing owed

@@ -92,6 +92,27 @@ export async function retryPayout(payoutId: string) {
 }
 
 /**
+ * Re-reads the open-request board — what a realtime arrival triggers on `/drive` (ADR-0021), and
+ * what the tab-focus handler calls to clear a ride another driver already took.
+ *
+ * Wraps `listOpenRequests()` unchanged, so the refetched list is RLS-scoped, decline-filtered
+ * (ADR-0019) and priced per driver by `commissionForRide` exactly as the page's own render is.
+ * Nothing about the board is recomputed client-side.
+ *
+ * `null` on a driver-profile miss or a read failure: this runs on a socket event and a tab switch,
+ * neither of which has a button to re-enable, and `/drive`'s own server render is what reports a
+ * real problem. A null leaves the board showing what it already had, which is the honest degrade.
+ */
+export async function readOpenRequests() {
+  const user = await requireUser();
+  const driver = await drivers.getOwnDriverProfile(user);
+  if (!driver) return null;
+
+  const result = await rides.listOpenRequests(driver);
+  return result.ok ? result.data : null;
+}
+
+/**
  * Re-reads the signed-in driver's own live ride — what a realtime event triggers on `/drive`
  * (ADR-0020). The event says "this ride moved" and its payload is discarded; this is where the
  * truth comes from.

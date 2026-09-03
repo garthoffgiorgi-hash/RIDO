@@ -48,6 +48,7 @@ What this costs, what it rules out, what now has to be true.
 | [0018](0018-late-cancellation-fee.md) | A rider may cancel late, for a fee the driver keeps | Accepted |
 | [0019](0019-driver-controls-their-own-queue.md) | The driver controls their own queue | Accepted |
 | [0020](0020-realtime-ride-status.md) | A realtime event is a notification, not a data channel | Accepted |
+| [0021](0021-realtime-open-pool.md) | The open pool hears arrivals, and structurally cannot hear removals | Accepted |
 
 This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
 rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot

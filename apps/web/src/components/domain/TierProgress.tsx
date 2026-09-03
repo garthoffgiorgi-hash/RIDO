@@ -20,9 +20,18 @@ import type { DriverTierProgress } from "@/lib/commission/server";
  *
  * **Two rates, never conflated.** `docs/business/monetization.md` warns explicitly against
  * presenting the month's *blended* keep rate as a *per-ride* guarantee. This card keeps them in
- * separate sentences with separate framing: "you kept ... overall" for the month so far, "you
+ * separate sentences with separate framing: "you earned ... overall" for the month so far, "you
  * keep ... of each new fare" for what happens next — the second is what `position.currentTier`
  * actually is.
+ *
+ * **This card and `PayoutCard` do not reconcile, and must not be made to (ADR-0021).** This one is
+ * *this month*, from `driver_monthly_stats`, and it counts what a driver **earned** on completed
+ * rides. Earnings is *all time*, from the `driver_payouts` ledger, and it counts what Stripe has
+ * **sent** — including cancellation fees, which `bump_monthly_stats` never sees because it fires
+ * only on `→ completed`. Hence "earned" here and "sent to your bank, all time" there: the copy is
+ * what keeps the two numbers from inviting a comparison neither can survive. Folding fees into the
+ * rollup to make them agree would inflate the commission basis and silently move the rate a
+ * driver's next ride is charged.
  *
  * **The meter is `aria-hidden`.** Every fact it draws is already stated in the sentences around
  * it, so a screen reader loses nothing. A segmented meter has no single value `aria-valuenow`
@@ -48,8 +57,10 @@ export function TierProgress({ progress }: { progress: DriverTierProgress }) {
           <p className="tabular text-[13px] text-slate">
             in fares · {ridesCount} {ridesCount === 1 ? "ride" : "rides"}
           </p>
+          {/* "Earned", not "kept": what a driver keeps of a fare and what has reached their bank
+              are different numbers on different clocks, and Earnings below shows the second one. */}
           <p className="tabular text-[13px] text-slate">
-            You kept {formatCents(payoutCents)} of that
+            You earned {formatCents(payoutCents)} of that
             {blendedKeepRateBps !== null ? ` — ${formatBpsAsPct(blendedKeepRateBps)} overall` : ""}.
           </p>
         </div>

@@ -11,7 +11,7 @@
 -- has a driver assigned, so rides_select_open_requests_as_active_driver (driver_id IS NULL) grants
 -- it nothing extra.
 begin;
-select plan(8);
+select plan(11);
 
 insert into auth.users (id) values
   ('f0000000-0000-0000-0000-000000000001'), -- Driver F: active, does the accepting
@@ -171,6 +171,53 @@ select throws_ok(
   null,
   'the same driver cannot hold a second accepted ride at once'
 );
+
+-- ------------------------------------------ a taken ride leaves EVERY other driver's visibility
+--
+-- This is the property the open-pool realtime board rests on (ADR-0021), and it is why that board
+-- can be told about arrivals but never about removals. Supabase Realtime authorises each
+-- postgres_changes event by checking whether the subscriber can still SELECT the changed row *as
+-- it now stands*. The moment driver F accepts, this row matches none of driver H's policies —
+-- not rides_select_own_as_driver (it is F's), not rides_select_open_requests_as_active_driver
+-- (driver_id is no longer null) — so there is no subscriber left for the event to reach.
+--
+-- If a future policy change makes a taken ride visible to the rest of the pool again, this fails,
+-- and whoever changed it should read ADR-0021 before deciding that is what they meant.
+
+set local role authenticated;
+set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000003';
+
+select is(
+  (select count(*) from rides where id = (select id from t_ids where label = 'ride_open_1'))::int,
+  0,
+  'once driver F accepts it, driver H cannot see that ride at all — the removal a realtime board can never be told about'
+);
+
+-- The control. Without this, the assertion above would also pass under a blanket denial, and the
+-- board would be broken in the *other* direction — no arrivals either.
+select is(
+  (select count(*) from rides where id = (select id from t_ids where label = 'ride_open_2'))::int,
+  1,
+  'and driver H still sees the request nobody has taken — arrivals stay visible, which is what makes the subscription work at all'
+);
+
+reset role;
+
+-- A rider cancelling before anyone accepts removes it the same way, for the same reason: the row
+-- stops being 'requested', so the open-pool policy stops matching it.
+update rides set status = 'canceled', canceled_at = now()
+where id = (select id from t_ids where label = 'ride_open_2');
+
+set local role authenticated;
+set local request.jwt.claim.sub = 'f0000000-0000-0000-0000-000000000003';
+
+select is(
+  (select count(*) from rides where id = (select id from t_ids where label = 'ride_open_2'))::int,
+  0,
+  'a rider cancelling an untaken request also drops it out of every driver''s view, undeliverable for the same reason'
+);
+
+reset role;
 
 select * from finish();
 rollback;

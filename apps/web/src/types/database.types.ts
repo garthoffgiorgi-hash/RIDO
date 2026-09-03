@@ -147,6 +147,7 @@ export type Database = {
       }
       drivers: {
         Row: {
+          accepting_rides: boolean
           auth_user_id: string
           background_check_status: string
           created_at: string
@@ -169,6 +170,7 @@ export type Database = {
           vehicle_year: number | null
         }
         Insert: {
+          accepting_rides?: boolean
           auth_user_id: string
           background_check_status?: string
           created_at?: string
@@ -191,6 +193,7 @@ export type Database = {
           vehicle_year?: number | null
         }
         Update: {
+          accepting_rides?: boolean
           auth_user_id?: string
           background_check_status?: string
           created_at?: string
@@ -305,6 +308,39 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "ride_charges_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: false
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ride_declines: {
+        Row: {
+          declined_at: string
+          driver_id: string
+          ride_id: string
+        }
+        Insert: {
+          declined_at?: string
+          driver_id: string
+          ride_id: string
+        }
+        Update: {
+          declined_at?: string
+          driver_id?: string
+          ride_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_declines_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ride_declines_ride_id_fkey"
             columns: ["ride_id"]
             isOneToOne: false
             referencedRelation: "rides"

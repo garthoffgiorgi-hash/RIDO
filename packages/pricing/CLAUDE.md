@@ -41,6 +41,7 @@ earnings yield less take-home and invites gaming the $1,000 / $3,000 lines.
 | `src/tiers.ts` | The `CommissionTier` type, `normalizeTiers()`, and `tierPositionFor()` — where an MTD position sits among the bands, for the driver-facing tier-progress card |
 | `src/commission.ts` | `commissionForRide({ fareCents, mtdGrossCents, tiers })` |
 | `src/subscription.ts` | Flat-fee resolution: pilot ($0) vs standard ($5000) |
+| `src/authorization.ts` | `holdAmountCents()` — the buffered card hold placed at booking, from the rate card's `authorization_buffer_bps` (ADR-0017) |
 | `src/fare.ts` | `quoteFare({ distanceMeters, durationSeconds, rateCard })` — what a ride COSTS |
 | `src/earnings-floor.ts` | Prop 22's guaranteed minimum. A diagnostic, not a rule |
 | `src/index.ts` | The public surface. Callers import only from here |

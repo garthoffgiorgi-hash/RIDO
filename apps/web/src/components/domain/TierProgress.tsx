@@ -4,10 +4,11 @@ import { formatCents } from "@/components/ui/Fare";
 import type { DriverTierProgress } from "@/lib/commission/server";
 
 /**
- * Month-to-date earnings, and where a driver sits in the graduated commission bands — the name
- * and home `apps/web/CLAUDE.md:33` reserves ("later `TierProgress`"), and the surface
- * `brand/design-system.md:127` specifies: *"month-to-date earnings with the tier progress (show
- * the graduated bands filling — turn the commission model into a motivator)."*
+ * Month-to-date earnings, and where a driver sits in the graduated commission bands — the name and
+ * home `apps/web/CLAUDE.md`'s `src/components/domain/` row reserved before this was built, and the
+ * surface `brand/design-system.md`'s driver-view blueprint specifies: *"month-to-date earnings with
+ * the tier progress (show the graduated bands filling — turn the commission model into a
+ * motivator)."*
  *
  * A Server Component, deliberately: every value here is already computed by
  * `getDriverTierProgress()` (`@/lib/commission/server.ts`), which is the only place that reads

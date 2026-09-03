@@ -5,8 +5,11 @@ import { Fare, formatCents } from "@/components/ui/Fare";
 import type { OpenRideRequest } from "@/lib/rides/server";
 
 /**
- * One open request on a driver's dispatch board — the name `apps/web/CLAUDE.md:42` already
- * reserves. "You keep $X (Y%)" is the wedge made visible (`brand/design-system.md` #6): both
+ * One open request on a driver's dispatch board — the name `apps/web/CLAUDE.md`'s
+ * `src/components/domain/` row already reserves. (No line number: that table moves whenever the
+ * file is edited, and a stale pointer is worse than a findable name.)
+ *
+ * "You keep $X (Y%)" is the wedge made visible (`brand/design-system.md` #6): both
  * figures arrive already computed on `ride` from `listOpenRequests()`'s `commissionForRide` call,
  * never arithmetic here — the one exception is `BPS_DENOMINATOR - ride.commissionRateBps`, which
  * `@rido/pricing` exports specifically so "the driver keeps the rest" isn't written as `10_000`

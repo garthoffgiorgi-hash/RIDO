@@ -149,5 +149,8 @@ which RLS restricts to `authenticated`. Not linked from anywhere.
 
 ## Still unbuilt
 
-The `quote-ride` Edge Function (nothing asks for a quote outside `/dev/maps` yet — it needs the
-booking flow, not this module) and anything that writes a `rides` row.
+The `quote-ride` Edge Function. It is no longer blocked: `/request` asks for a real quote on every
+pickup/dropoff change, through `quoteRideRequest()` (`apps/web/src/lib/rides/server.ts`), which
+calls `measureRoute()` and `quoteFare()` server-side inside the Next.js app. A Deno function would
+buy sharing that path with a future non-web caller, and nothing needs one yet — so this is a
+deferral now, not a dependency. (`rides` rows are written, by `requestRide()` — ADR-0012.)

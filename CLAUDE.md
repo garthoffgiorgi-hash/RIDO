@@ -171,4 +171,8 @@ a new file is written, and the root CLAUDE.md is the only project memory that su
 
 Write or supersede the ADR, update the doc, then change the code — in one PR, in that order.
 Run `node scripts/check-context.mjs` before pushing; it fails on broken references, oversized
-context files, and pricing constants leaking outside their one home.
+context files, pricing constants leaking outside their one home, vendor SDKs imported outside
+`src/lib/` (rule 7), and rotted `path:line` citations (rule 8).
+
+**Never cite a line number in a CLAUDE.md** — every one is at its budget, so the next trim reflows
+every number below it. Name the section or the table row; rule 8 fails the build on the alternative.

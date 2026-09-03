@@ -13,7 +13,7 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — nine core tables
+## Schema — ten core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
@@ -71,6 +71,11 @@ Config — the graduated rates, editable without deploy.
 `id` · `tier_order` · `lower_bound_cents` · `upper_bound_cents` (null = ∞) · `rate_bps` · `active` (bool) · `effective_from`. Unique on (`tier_order`, `effective_from`) — required for `supabase/seed/commission_tiers.sql`'s `ON CONFLICT` to be valid. Seed: (0–100000 → 2000 bps), (100000–300000 → 1200 bps), (300000–null → 800 bps).
 **RLS:** every signed-in user can read the current rates. No write policy for anyone — a rate change is a row edit via the dashboard or a service-role script, never the app.
 
+### `fare_rate_cards`
+Config — what a ride COSTS a rider, per market. The fare-side mirror of `commission_tiers`, and the same rule: a repricing is a row change, not a deploy.
+`id` · `market` (e.g. `san-diego`) · `base_cents` · `per_mile_cents` · `per_minute_cents` · `minimum_fare_cents` · `active` · `effective_from` · plus the three payment columns (ADR-0017, ADR-0018): **`authorization_buffer_bps`** (how much headroom the hold carries over the quote), **`cancellation_fee_cents`**, **`cancellation_grace_seconds`**. No surge column — `quoteFare()` accepts an *optional* `surgeMultiplierBps` that defaults to `NO_SURGE_BPS`, and no caller passes one, so the math is ready for surge while the schema deliberately isn't. Read through `active_fare_rate_card(market)`; every number is seeded by `supabase/seed/fare_rate_cards.sql` and typed nowhere else (root invariant 3's fare half, `../business/fare-pricing.md`).
+**RLS:** readable by `authenticated`, writable by no one — same posture as `commission_tiers`.
+
 ## Functions
 
 `rido_year_month(timestamptz)` — the one canonical `America/Los_Angeles` bucketing conversion.
@@ -82,9 +87,18 @@ from `started_at`/`completed_at` on the same completion transition, when both ex
 `'canceled'`. If a fee was captured, the driver gets it **in full** (ADR-0018; provisional — see
 `README.md`'s open questions). The fee must be captured *before* the status flips, since this reads it.
 
-`claim_ride_charge_attempt()` / `release_ride_charge_attempt()` — ADR-0016's exclusive claim,
-mirrored for the inbound ledger rather than generalised: a shared version would need a table name
-as a parameter, and dynamic SQL in a money path is not a trade worth nine saved lines.
+`claim_driver_payout_attempt()` / `release_driver_payout_attempt()` — ADR-0016's exclusive claim,
+handing out a fresh attempt number so a retry is genuinely new to Stripe rather than a replay of
+the first cached response. `claim_ride_charge_attempt()` / `release_ride_charge_attempt()` — the
+same pair mirrored for the inbound ledger rather than generalised: a shared version would need a
+table name as a parameter, and dynamic SQL in a money path is not a trade worth nine saved lines.
+
+`active_commission_tiers()` — the current tier set, the only read `complete-ride` and
+`src/lib/commission/` rate against. `active_fare_rate_card(market)` — its fare-side twin.
+`driver_month_to_date(driver_id, year_month)` — the MTD gross a ride is bracketed against
+(service-role only; the app reads `driver_monthly_stats` directly under RLS instead).
+`apply_ride_commission()` — the compare-and-swap that locks, re-checks the MTD position, and writes
+the snapshot and `status = 'completed'` as one UPDATE. Full account: `ride-completion.md` (ADR-0008).
 
 `queue_driver_payout()` — writes the `driver_payouts` row on that same transition, so a completed
 ride and the debt it creates are one atomic act (ADR-0015). `set_updated_at()` — generic, reused
@@ -94,10 +108,11 @@ trigger on `rides`.
 ## Not built, in this pass or any prior one
 
 The CPUC 0.33% fee and airport surcharges (`../compliance/ca-tnc.md` calls both out as needing
-to be "first-class line items") have no schema anywhere yet — and when they land, what a rider is
-charged stops equalling `rides.fare_cents`, which has no `rider_total_cents` column to hold the
-difference (`FareQuote` already distinguishes the two; the table does not). Real future work, not
-decided here.
+to be "first-class line items") still have no schema. **The column to hold the difference now
+exists** — ADR-0017 added `rides.rider_total_cents`, equal to `fare_cents` until a pass-through
+does, with `>= fare_cents` enforced. What is missing is the per-line-item breakdown: `FareQuote`
+carries `FareLineItem`s, nothing persists them, and a rider's receipt cannot itemise a charge the
+table records only as a total. Real future work, not decided here.
 
 An adjustment-row table is **half-answered**: `driver_payouts.ride_id` is nullable precisely so a
 correction or a Prop 22 top-up has somewhere to be written without editing a settled row, which is

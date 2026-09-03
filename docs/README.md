@@ -17,7 +17,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | The marketing site's rates and the "~86%" figure | **derived** — `apps/web/src/lib/marketing/figures.ts`, generated from the seed. Never retyped |
 | Flat fee amount, pilot waiver, fee turn-on trigger | `decisions/0003-pilot-fee-waiver.md` + `business/monetization.md` |
 | Why hybrid (fee + commission) rather than pure subscription | `decisions/0001-hybrid-monetization.md` |
-| Database schema, columns, constraints | `architecture/data-model.md` — **superseded by `supabase/migrations/` once they exist** |
+| Database schema, columns, constraints | `supabase/migrations/` — **the source of truth.** `architecture/data-model.md` is the human-readable summary; where they disagree the migrations win |
 | Ride completion flow, snapshotting, the MTD trigger | `architecture/ride-completion.md` |
 | Why completion is compare-and-swap, and where heavy computation may not run | `decisions/0008-completion-is-a-bounded-critical-section.md` |
 | Supabase Auth dashboard config (email templates, SMTP, SMS, redirect allowlist) | `architecture/auth-setup.md` |
@@ -31,8 +31,12 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Why the app forwards the driver's JWT to `complete-ride` rather than re-orchestrating it, `started_at`/`duration_seconds` | `decisions/0014-app-calls-complete-ride.md` |
 | A driver's online/offline state, declining a request, and which columns a driver may write about themselves | `decisions/0019-driver-controls-their-own-queue.md` |
 | How a driver gets paid: the ledger, per-ride transfers, Connect onboarding | `architecture/payouts.md` |
+| Why a payout retry needs its own attempt claim, not just a stable idempotency key | `decisions/0016-payout-attempt-claim.md` |
 | How a rider is charged: the hold, the capture, saved cards, cancellation fees | `architecture/rider-charging.md` |
+| When a cancellation is chargeable and who keeps the fee (driver, 100% — provisional, see Q5) | `decisions/0018-late-cancellation-fee.md` |
 | **Who absorbs card processing** (RIDO does, pilot-scoped), and why payouts are per-ride | `decisions/0015-connect-payouts-per-ride.md` |
+| Why a realtime event is a notification and never a data channel; which surfaces subscribe | `decisions/0020-realtime-ride-status.md` |
+| Why the open-pool board hears arrivals but structurally cannot hear removals | `decisions/0021-realtime-open-pool.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |

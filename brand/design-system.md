@@ -118,10 +118,11 @@ anticipate — the fare is re-quoted server-side at confirm, and if it moved, th
 rather than being silently charged a different number — *requested* ("looking for a driver,"
 cancelable only here), *matched* ("Your driver is on the way," once accepted), and now *in trip*
 too ("You're on your way," once the driver starts). A trip-complete summary (fare paid, dismissable
-back to booking) closes the loop once the ride finishes. No realtime anywhere in this list — every
-state change appears on the rider's next reload, not live. `arrived` (a driver-facing "I'm here"
-action) and `rate` are what's left. `"Get a rido"` keeps its name through every state per section
-5 — a changed price never becomes a relabeled button.
+back to booking) closes the loop once the ride finishes. **Every one of those transitions is now
+live** (ADR-0020): the sheet moves on its own, with no spinner and no connection state — the copy
+simply changes. `arrived` (a driver-facing "I'm here" action) and `rate` are what's left.
+`"Get a rido"` keeps its name through every state per section 5 — a changed price never becomes a
+relabeled button.
 
 **Driver view:**
 Online/offline toggle (Signal when online), incoming-request card with fare + **"you keep $X (Y%)"** front and center (the wedge, made visible), month-to-date earnings with the tier progress (show the graduated bands filling — turn the commission model into a motivator), accept/decline. Tabular numerals throughout.
@@ -132,7 +133,7 @@ both addresses, and **"you keep $X (Y%)"** in tabular numerals, computed live vi
 write. Once accepted, `CurrentRidePanel` takes over with the same live figure and one button that
 becomes **Start trip**, then **Complete ride** — completing swaps it for the real earned amount,
 the first number in this app ever computed by the deployed `complete-ride` function rather than
-locally. Above both sits `PayoutCard` (ADR-0015) — an **Earnings** card leading with the amount
+locally. Below both sits `PayoutCard` (ADR-0015) — an **Earnings** card leading with the amount
 already sent to the driver's bank as a `Fare`, then anything still owed. Until Connect onboarding
 finishes it carries an Accent/live button ("Connect your bank", or "Finish payout setup" once
 started) into Stripe's hosted flow, since RIDO never collects a bank detail itself.

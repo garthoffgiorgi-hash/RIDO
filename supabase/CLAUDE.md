@@ -157,9 +157,10 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
   conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
   minutes) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` (`npm run types:generate`) after migrations. Done through the
-  rider-charging ones; `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts`
-  are stopgaps predating that run — deleting both is a live follow-up, not a future one.
+- Regenerate `database.types.ts` after migrations — **done through every one**, so the types cover
+  all ten tables. `npm run types:generate` needs Docker; without it pass `--project-id <ref>`. `>`
+  truncates the file *before* the command runs, so a failure empties it — check `git diff`.
+  `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts` are hand-written stopgaps predating that run; deleting both is a live follow-up.
 
 ## Tests (`supabase/tests/`, pgTAP)
 
@@ -173,9 +174,8 @@ no driver can write; and `bump_monthly_stats` is atomic under concurrent complet
 driver.
 
 **A column added to a table with RLS inherits that table's policies** — `007_ride_addresses.sql`
-proves that for `pickup_address`/`dropoff_address` rather than assuming it. Worth repeating for
-the next column added to `rides`: the policy doesn't need changing, but the proof that it still
-covers the row does.
+proves that for `pickup_address`/`dropoff_address` rather than assuming it. The policy doesn't need
+changing for the next column added to `rides`, but the proof that it still covers the row does.
 
 **"A policy with no test is an assumption" applies retroactively.** `subscriptions_select_own` went
 untested from the first migration until `012_subscriptions_rls.sql`. If you touch a table whose

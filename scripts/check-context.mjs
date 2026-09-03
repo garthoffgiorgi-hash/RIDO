@@ -193,6 +193,58 @@ for (const file of webSource) {
   }
 }
 
+// ---------------------------------------------------------------------- 8
+// `path:line` citations rot silently. Rule 3 checks that a path resolves, and a line number keeps
+// "resolving" long after the line it named moved — the reference still points somewhere, just at
+// the wrong thing. Found during a drift pass: two of twelve had already rotted, and both pointed
+// into a CLAUDE.md, which is the worst possible target. Every CLAUDE.md carries a hard line budget
+// (rule 1), so trimming one to fit reflows every number below the edit.
+//
+// So: a line citation must resolve, must not point past the end of the file, and must not name a
+// line in a CLAUDE.md at all. Cite the section or the table row there instead — findable by name,
+// and it survives the next trim.
+const LINE_REF = /`([\w./-]+\.(?:md|ts|tsx|js|jsx|mjs|sql|json|html|toml|css)):(\d+)(?:-(\d+))?`/g;
+
+/** basename → every file carrying it, for bare `core.ts:70-72`-style citations. */
+const byBasename = new Map();
+for (const f of files) {
+  const list = byBasename.get(basename(f));
+  if (list) list.push(f);
+  else byBasename.set(basename(f), [f]);
+}
+
+const citingFiles = files.filter(
+  (f) => /\.(md|ts|tsx|js|jsx|mjs|sql)$/.test(f) && !isVendoredBundleContent(f),
+);
+for (const file of citingFiles) {
+  const body = stripFences(readFileSync(file, "utf8"));
+  for (const [, target, from, to] of body.matchAll(LINE_REF)) {
+    const cited = `${target}:${from}${to ? `-${to}` : ""}`;
+    const matches = target.includes("/")
+      ? [resolve(dirname(file), target), resolve(ROOT, target)].filter(existsSync)
+      : (byBasename.get(target) ?? []);
+
+    if (matches.length === 0) {
+      fail(rel(file), `line reference "${cited}" does not resolve`);
+      continue;
+    }
+    if (basename(matches[0]) === "CLAUDE.md") {
+      fail(
+        rel(file),
+        `"${cited}" cites a line in a CLAUDE.md — those carry a line budget and reflow on every trim. Name the section or table row instead.`,
+      );
+      continue;
+    }
+    // An ambiguous basename can't be line-checked without guessing which file was meant.
+    if (matches.length > 1) continue;
+
+    const lineCount = readFileSync(matches[0], "utf8").split("\n").length;
+    if (Number(to ?? from) > lineCount) {
+      fail(rel(file), `"${cited}" points past the end of a ${lineCount}-line file`);
+    }
+  }
+}
+
 // ------------------------------------------------------------------- report
 if (problems.length === 0) {
   console.log("✓ context check passed");

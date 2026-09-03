@@ -157,10 +157,10 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
   conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
   minutes) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` after migrations — **done through every one**, so the types cover
-  all ten tables. `npm run types:generate` needs Docker; without it pass `--project-id <ref>`. `>`
-  truncates the file *before* the command runs, so a failure empties it — check `git diff`.
-  `apps/web/src/lib/payouts/types.ts` and `apps/web/src/lib/payments/types.ts` are hand-written stopgaps predating that run; deleting both is a live follow-up.
+- Regenerate `database.types.ts` after migrations — **one run behind**: the committed file stops at
+  `20260902120200_enable_late_cancellation.sql`, missing `ride_declines` and `drivers.accepting_rides`.
+  Both are live, so the *generation* is stale, not the schema; stopgaps in
+  `apps/web/src/lib/drivers/status.ts` and `apps/web/src/lib/rides/server.ts` stand in until it re-runs. `npm run types:generate` needs Docker, else pass `--project-id <ref>`; `>` truncates the file *before* the command runs, so a failure empties it — check `git diff`.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

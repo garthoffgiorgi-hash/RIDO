@@ -13,8 +13,8 @@ import {
   retrieveSavedCard,
 } from "@/lib/stripe/server.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database.types";
 import { failed, type PaymentsResult } from "./result.ts";
-import type { RideChargeRow, RiderPaymentProfileRow } from "./types.ts";
 
 /**
  * What RIDO holds and takes from a rider, and getting it right.
@@ -33,24 +33,37 @@ import type { RideChargeRow, RiderPaymentProfileRow } from "./types.ts";
  * (rule 7, enforced by `scripts/check-context.mjs`).
  */
 
-/**
- * `ride_charges`, `rider_payment_profiles` and the new `fare_rate_cards` columns are not in the
- * generated types yet — see `./types.ts`. These casts are the whole of the bridge, kept at the
- * query boundary so the rows they produce are strongly typed everywhere downstream.
- */
-type UntypedClient = {
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate these migrations; see ./types.ts
-  from: (table: string) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate these migrations; see ./types.ts
-  rpc: (fn: string, args?: Record<string, unknown>) => any;
-};
-
 /** Every column of `RideChargeRow`, named once so the reads below cannot drift apart. */
 const CHARGE_COLUMNS =
   "id, ride_id, rider_id, authorized_cents, captured_cents, status, stripe_payment_intent_id, failure_reason, attempt_count, settling, settling_since, created_at, updated_at";
 
 const PROFILE_COLUMNS =
   "rider_id, stripe_customer_id, default_payment_method_id, card_brand, card_last4, card_exp_month, card_exp_year, created_at, updated_at";
+
+/**
+ * `ride_charges.status`, narrowed — the inbound twin of `PayoutStatus` in `../payouts/server.ts`,
+ * and there for the same reason. The generated types call it `string` because the column is `text`
+ * with a CHECK rather than a Postgres enum, and the generator reads column types, not constraints.
+ * Restating the five values is the one job the deleted `types.ts` bridge did that the generator
+ * cannot do for us.
+ *
+ * Source of truth: `ride_charges_status_check` in
+ * `supabase/migrations/20260902120100_create_ride_charges.sql`.
+ */
+export type ChargeStatus = "authorizing" | "authorized" | "captured" | "voided" | "failed";
+
+/**
+ * The inbound ledger row, derived from the generated type with `status` narrowed.
+ *
+ * Note there is still no `kind`: whether a captured row was a fare or a cancellation fee is
+ * answered by the ride's own terminal status, in one place, rather than stored twice.
+ */
+export type RideChargeRow = Omit<Database["public"]["Tables"]["ride_charges"]["Row"], "status"> & {
+  readonly status: ChargeStatus;
+};
+
+/** Who a rider is to Stripe, and which card they saved. Taken whole — it has no narrowed column. */
+export type RiderPaymentProfileRow = Database["public"]["Tables"]["rider_payment_profiles"]["Row"];
 
 // ─────────────────────────────────────────────────────────────────────── the rider's saved card
 
@@ -81,7 +94,7 @@ const NO_CARD: PaymentProfile = {
  * and it is what makes `requestRide` return `needs_card` rather than failing a charge.
  */
 export async function getPaymentProfile(user: User): Promise<PaymentProfile> {
-  const supabase = (await createServerClient()) as unknown as UntypedClient;
+  const supabase = await createServerClient();
 
   const { data, error } = await supabase
     .from("rider_payment_profiles")
@@ -112,7 +125,7 @@ export async function getPaymentProfile(user: User): Promise<PaymentProfile> {
  */
 export async function startCardSetup(): Promise<PaymentsResult<{ clientSecret: string }>> {
   const user = await requireUser();
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data: existing } = await service
     .from("rider_payment_profiles")
@@ -153,7 +166,7 @@ export async function startCardSetup(): Promise<PaymentsResult<{ clientSecret: s
  */
 export async function recordCardFromSetup(setupIntentId: string): Promise<PaymentsResult<null>> {
   const user = await requireUser();
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const card = await retrieveSavedCard(setupIntentId);
   if (!card.ok) return failed(card.message);
@@ -229,7 +242,7 @@ export async function authorizeRideCharge(
   riderId: string,
   holdCents: number,
 ): Promise<ChargeOutcome> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data: profileRow } = await service
     .from("rider_payment_profiles")
@@ -316,7 +329,7 @@ export async function authorizeRideCharge(
  * the ride happened, the driver is owed, and the charge stays `authorized` and retryable.
  */
 async function captureCharge(rideId: string, amountCents: number): Promise<ChargeOutcome> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data, error } = await service
     .from("ride_charges")
@@ -407,7 +420,7 @@ async function captureCharge(rideId: string, amountCents: number): Promise<Charg
  * `authorization.ts`), so this is both the quote and the final figure.
  */
 export async function captureRideCharge(rideId: string): Promise<ChargeOutcome> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data, error } = await service
     .from("rides")
@@ -448,7 +461,7 @@ export async function chargeCancellationFee(
  * cancel a ride whose authorization never completed.
  */
 export async function voidRideCharge(rideId: string): Promise<ChargeOutcome> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data, error } = await service
     .from("ride_charges")
@@ -520,9 +533,15 @@ export async function syncChargeFromWebhook(
   capturedCents: number | null,
   failureReason: string | null,
 ): Promise<PaymentsResult<null>> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
-  const patch: Record<string, unknown> = { status, failure_reason: failureReason };
+  // Typed against the generated `Update` shape rather than `Record<string, unknown>`: the old
+  // untyped client accepted any key here, so a misspelt column would have been a silent no-op
+  // write on the money ledger. Now it fails to compile.
+  const patch: Database["public"]["Tables"]["ride_charges"]["Update"] = {
+    status,
+    failure_reason: failureReason,
+  };
   if (status === "captured") patch.captured_cents = capturedCents;
 
   const { error } = await service

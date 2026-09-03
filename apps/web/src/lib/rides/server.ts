@@ -46,11 +46,17 @@ const messageOf = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
 /**
- * `ride_declines` (ADR-0019) postdates the generated types, so its two touch points here reach it
- * through this narrow escape hatch rather than a whole bridge file. **Temporary** — it goes away
- * when `npm run types:generate` runs against the pushed migration, same as the note on
- * `DriverProfile` in `src/lib/drivers/status.ts`. Every row it produces is cast to a real shape at
- * the query boundary, so nothing downstream is `any`.
+ * `ride_declines` (ADR-0019) is absent from the committed `database.types.ts`, which was last
+ * generated against a schema stopping at `20260902120200_enable_late_cancellation.sql`. The table
+ * is live — declining works — so it is the *generation* that is stale, not the migration. Until it
+ * is re-run, these two touch points reach the table through this narrow escape hatch rather than a
+ * whole bridge file. Every row it produces is cast to a real shape at the query boundary, so
+ * nothing downstream is `any`.
+ *
+ * **This and `DriverProfile`'s `accepting_rides` intersection are the last two stopgaps of this
+ * kind.** The `payouts/types.ts` and `payments/types.ts` bridges are deleted: `driver_payouts`,
+ * `ride_charges` and `rider_payment_profiles` all reached the generated types, so those modules now
+ * derive their row shapes from the generator instead of restating them by hand.
  */
 type UntypedTables = {
   // biome-ignore lint/suspicious/noExplicitAny: the generated types predate ride_declines

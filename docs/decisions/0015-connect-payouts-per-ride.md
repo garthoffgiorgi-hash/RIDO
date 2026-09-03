@@ -143,10 +143,12 @@ package and no import map, and the repo already has route handlers. `apps/web/sr
   and nothing is lost. This is the honest cost of building the halves in sequence, and the ledger
   is what makes it survivable. Test mode has no such limit, so the path is provable now. **A retry
   of this exact case could not actually succeed until ADR-0016** — see the note under §4.
-- **`database.types.ts` is stale** against this migration, which adds a table and two columns.
-  `apps/web/src/lib/payouts/types.ts` bridges it with narrow, documented local types — the same
-  pattern ADR-0012 used and ADR-0014 deleted. **Delete it once `npm run types:generate` has run
-  against the pushed migration.**
+- **`database.types.ts` was stale** against this migration, which adds a table and two columns. A
+  narrow, documented bridge file stood in — the same pattern ADR-0012 used and ADR-0014 deleted.
+  **Since resolved:** the generated types carry `driver_payouts`, the bridge is deleted, and
+  `apps/web/src/lib/payouts/server.ts` derives its row shape from the generator. Only `status` is
+  still written by hand, because the column is `text` + CHECK rather than an enum and the generator
+  can therefore only type it `string`.
 - **Prop 22 enforcement is still not built, and per-ride payment makes its shape clearer**: a
   fortnight's shortfall cannot be known until the fortnight closes, so a top-up must be a separate
   later payout rather than an adjustment to a per-ride one. The nullable `ride_id` is where it will

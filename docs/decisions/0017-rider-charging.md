@@ -121,9 +121,11 @@ applies a delta must add one.
 
 - **This is what makes production payouts work.** `balance_insufficient` stops being the expected
   outcome and becomes a real signal.
-- **`database.types.ts` is stale** against three migrations. `apps/web/src/lib/payments/types.ts`
-  bridges it with narrow, documented local types — the same stopgap ADR-0012 used and ADR-0014
-  deleted. **Delete it once `npm run types:generate` has run against the pushed migrations.**
+- **`database.types.ts` was stale** against three migrations, and a narrow, documented bridge file
+  stood in — the same stopgap ADR-0012 used and ADR-0014 deleted. **Since resolved:** the generated
+  types carry `ride_charges`, `rider_payment_profiles` and the three `fare_rate_cards` payment
+  columns; the bridge is deleted and `apps/web/src/lib/payments/server.ts` derives its row shapes
+  from the generator, hand-narrowing only the CHECK-constrained `status`.
 - **A publishable key now exists.** `.env.example` said one "becomes necessary the day riders are
   charged, and not before"; `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` is that day, consumed by exactly
   one file (`apps/web/src/lib/payments/browser.ts`).

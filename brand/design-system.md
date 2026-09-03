@@ -146,8 +146,16 @@ half of the request card: a small `ghost` control, never a second full-width but
 because one mis-tap on a phone permanently removes a request a driver wanted and the product has no
 undo. While offline the board stays fully visible and Accept is disabled — with the reason in
 rendered text at the top of the panel, once, not a tooltip (a disabled `Button` carries
-`pointer-events-none`, so it can never show one) and not repeated on every card. Not built:
-month-to-date earnings and tier-progress visualization.
+`pointer-events-none`, so it can never show one) and not repeated on every card.
+
+**Month-to-date tier progress is built**, as `TierProgress` — sitting between the ride panels and
+`PayoutCard`, the month's *rate* story before its *cash* story. The graduated bands fill left to
+right, one segment per tier, widths proportional to each band's real width; the unbounded top band
+gets a fixed share so it never reads as a segment a driver could complete. Every fact — this
+month's fares, what was kept, the current and next rate — is stated in tabular-numeral prose beside
+the meter, which is purely decorative (`aria-hidden`) since nothing in it has a single value an
+`aria-valuenow` could honestly describe. Motivates by being honest, never by urgency: no countdown
+framing, no "$340 to go."
 
 **The hold is disclosed, never discovered.** A rider is told what will be held and what will be
 charged, before they tap — "we'll hold a little more than this while you ride, and charge $X when

@@ -38,7 +38,7 @@ earnings yield less take-home and invites gaming the $1,000 / $3,000 lines.
 | File | Holds |
 |---|---|
 | `src/money.ts` | Cent/bps primitives, rounding, formatting-free arithmetic |
-| `src/tiers.ts` | The `CommissionTier` type and tier-band traversal |
+| `src/tiers.ts` | The `CommissionTier` type, `normalizeTiers()`, and `tierPositionFor()` — where an MTD position sits among the bands, for the driver-facing tier-progress card |
 | `src/commission.ts` | `commissionForRide({ fareCents, mtdGrossCents, tiers })` |
 | `src/subscription.ts` | Flat-fee resolution: pilot ($0) vs standard ($5000) |
 | `src/fare.ts` | `quoteFare({ distanceMeters, durationSeconds, rateCard })` — what a ride COSTS |

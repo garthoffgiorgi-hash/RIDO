@@ -1,7 +1,9 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { TierProgress } from "@/components/domain/TierProgress";
 import { requireUser } from "@/lib/auth/server";
+import { getDriverTierProgress } from "@/lib/commission/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
 import {
@@ -24,8 +26,8 @@ import { PayoutCard } from "./PayoutCard";
  * exclusive, so `listOpenRequests` doesn't even run when a current ride exists — and the payout
  * card (`PayoutCard`, ADR-0015), which is where a driver connects a bank and sees what they've
  * been paid. `AvailabilityToggle` (ADR-0019) sits above both panels rather than inside either,
- * since a driver holding a live ride must still be able to go offline. MTD tier-progress
- * visualization is still roadmap Phase 3.
+ * since a driver holding a live ride must still be able to go offline. `TierProgress` sits between
+ * the ride panels and `PayoutCard` — the month's *rate* story, then the month's *cash* story.
  *
  * Reachable by anyone signed in, driver or not: someone without a `drivers` row sees an honest
  * "you haven't applied" state rather than being redirected away, since there's no self-serve
@@ -63,6 +65,7 @@ export default async function DrivePage({
   const hasNoActiveRide = currentRide?.ok && currentRide.data === null;
   const openRequests = hasNoActiveRide && freshDriver ? await listOpenRequests(freshDriver) : null;
   const payouts = active && freshDriver ? await getPayoutSummary(freshDriver) : null;
+  const tierProgress = active && freshDriver ? await getDriverTierProgress(freshDriver.id) : null;
 
   return (
     <main className="flex min-h-screen items-center bg-ivory p-6">
@@ -125,6 +128,13 @@ export default async function DrivePage({
             />
           ) : (
             <p className="text-[13px] text-danger">{openRequests.message}</p>
+          ))}
+
+        {tierProgress &&
+          (tierProgress.ok ? (
+            <TierProgress progress={tierProgress.data} />
+          ) : (
+            <p className="text-[13px] text-danger">{tierProgress.message}</p>
           ))}
 
         {payouts &&

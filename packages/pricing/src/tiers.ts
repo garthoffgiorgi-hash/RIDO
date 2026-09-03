@@ -6,7 +6,7 @@
  * those values.
  */
 
-import { BPS_DENOMINATOR } from "./money.ts";
+import { type Cents, BPS_DENOMINATOR } from "./money.ts";
 
 /** A single commission band. Bounds are integer cents; rate is basis points (2000 = 20%). */
 export interface CommissionTier {
@@ -119,4 +119,98 @@ export function normalizeTiers(tiers: readonly CommissionTier[]): readonly Commi
   }
 
   return sorted;
+}
+
+/**
+ * Where a driver's month-to-date gross position sits among the tiers — the read-side counterpart
+ * to `commissionForRide`'s band walk. Same half-open `[lower, upper)` rule, so a position sitting
+ * exactly on a boundary belongs to the band ABOVE it, matching what the next cent of fare would
+ * actually be charged.
+ *
+ * A discriminated union, not nullable fields on one shape. Being in the unbounded top band is a
+ * genuinely different state, not a "climbing" state with missing data — there is no band width, no
+ * next tier, and no meaningful "progress through" an interval with no end. Forcing that into a
+ * `kind` makes every caller handle it, rather than rendering a progress bar stuck at 100%.
+ *
+ * Deliberately carries no `progressBps` or other pre-divided ratio. A ratio is a display concern;
+ * the caller already has both integers here (`centsIntoCurrentBand` and `currentBandWidthCents`)
+ * and can derive a segment width or a percentage itself. Adding one here would be rounding a
+ * quantity that isn't money on its own — the same reasoning `commissionForRide`'s doc comment
+ * gives for rounding once, at the end, on the only figure that actually is money.
+ */
+export type TierPosition =
+  | {
+      readonly kind: "climbing";
+      readonly currentTier: CommissionTier;
+      readonly nextTier: CommissionTier;
+      /** How far into `currentTier`'s band the position sits. */
+      readonly centsIntoCurrentBand: number;
+      /** `currentTier.upperBoundCents - currentTier.lowerBoundCents`, handed back so a caller
+       *  never re-derives it and risks disagreeing with which tier "current" actually is. */
+      readonly currentBandWidthCents: number;
+      /** `centsIntoCurrentBand + centsToNextTier === currentBandWidthCents`, always. */
+      readonly centsToNextTier: number;
+    }
+  | {
+      readonly kind: "top";
+      readonly currentTier: CommissionTier;
+      readonly centsIntoCurrentBand: number;
+    };
+
+/**
+ * Finds the band `mtdGrossCents` falls in and reports the driver's position within it.
+ *
+ * Runs `normalizeTiers()` first, so a malformed tier set fails loudly here too rather than only
+ * when a ride happens to be priced — the same "fail on the first read of the month, not silently
+ * until someone crosses a boundary" posture `commissionForRide` takes.
+ */
+export function tierPositionFor(
+  mtdGrossCents: Cents,
+  tiers: readonly CommissionTier[],
+): TierPosition {
+  if (!Number.isInteger(mtdGrossCents) || mtdGrossCents < 0) {
+    throw new Error(
+      `tierPositionFor: mtdGrossCents must be a non-negative integer, got ${mtdGrossCents}`,
+    );
+  }
+
+  const bands = normalizeTiers(tiers);
+
+  // normalizeTiers guarantees a gapless cover with exactly one unbounded top band, so exactly one
+  // band matches [lower, upper) for any non-negative position — this loop always finds one.
+  for (const tier of bands) {
+    const { lowerBoundCents, upperBoundCents } = tier;
+    const inBand = upperBoundCents === null ? true : mtdGrossCents < upperBoundCents;
+    if (mtdGrossCents < lowerBoundCents || !inBand) continue;
+
+    const centsIntoCurrentBand = mtdGrossCents - lowerBoundCents;
+
+    if (upperBoundCents === null) {
+      return { kind: "top", currentTier: tier, centsIntoCurrentBand };
+    }
+
+    const nextTier = bands.find((t) => t.lowerBoundCents === upperBoundCents);
+    if (nextTier === undefined) {
+      // normalizeTiers already proved the bands tile exactly, so this can only mean a bug in the
+      // walk above, not a malformed tier set — the set was already validated.
+      throw new Error(
+        `tierPositionFor: no band starts at ${upperBoundCents} — this is a bug, normalizeTiers should have caught it.`,
+      );
+    }
+
+    return {
+      kind: "climbing",
+      currentTier: tier,
+      nextTier,
+      centsIntoCurrentBand,
+      currentBandWidthCents: upperBoundCents - lowerBoundCents,
+      centsToNextTier: upperBoundCents - mtdGrossCents,
+    };
+  }
+
+  // Unreachable given normalizeTiers' guarantees; thrown rather than returning a fallback so a
+  // future change to normalizeTiers' invariants fails loudly here instead of silently.
+  throw new Error(
+    `tierPositionFor: ${mtdGrossCents} cents matched no band — this is a bug, normalizeTiers should have caught it.`,
+  );
 }

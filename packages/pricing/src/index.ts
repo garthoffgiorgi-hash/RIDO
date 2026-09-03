@@ -24,8 +24,8 @@ export {
 } from "./money.ts";
 export type { Cents, Bps } from "./money.ts";
 
-export { normalizeTiers } from "./tiers.ts";
-export type { CommissionTier } from "./tiers.ts";
+export { normalizeTiers, tierPositionFor } from "./tiers.ts";
+export type { CommissionTier, TierPosition } from "./tiers.ts";
 
 export { commissionForRide } from "./commission.ts";
 export type { RideCommissionInput, RideCommission } from "./commission.ts";

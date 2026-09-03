@@ -12,10 +12,11 @@ way: `../decisions/0014-app-calls-complete-ride.md`.*
 **Status: the full loop is built.** `src/lib/rides/`, `/request` (rider), `/drive` (driver) — a
 ride can now go `requested → accepted → in_progress → completed` for real, for the first time.
 **Both live-ride surfaces are realtime** (ADR-0020): the rider's sheet and the driver's current-ride
-card move on their own, without a reload. A driver can decline a request or go offline (ADR-0019).
-Not built: MTD tier-progress visualization, dispatch or proximity matching, and realtime on the
-driver's *open pool* — that one is a whole-table subscription with its own authorization question,
-deferred in ADR-0020 rather than skipped.
+card move on their own, without a reload. A driver can decline a request or go offline (ADR-0019),
+and sees their own month-to-date tier progress (`TierProgress`,
+`apps/web/src/lib/commission/server.ts`'s `getDriverTierProgress()`). Not built: dispatch or proximity matching, and realtime on the driver's
+*open pool* — that one is a whole-table subscription with its own authorization question, deferred
+in ADR-0020 rather than skipped.
 
 ## The rider flow
 

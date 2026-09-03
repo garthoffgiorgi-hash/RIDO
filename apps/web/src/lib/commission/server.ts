@@ -1,13 +1,21 @@
 import "server-only";
 
-import type { CommissionTier } from "@rido/pricing";
+import {
+  BPS_DENOMINATOR,
+  cents,
+  type CommissionTier,
+  roundHalfUpDiv,
+  tierPositionFor,
+  type TierPosition,
+} from "@rido/pricing";
 import { createServerClient } from "@/lib/supabase/server";
 import { failed, type CommissionResult } from "./result.ts";
 
 /**
  * Reads what commission looks like right now: the active tiers, and a driver's month-to-date
- * gross. Nothing here does money math — handing both to `commissionForRide` (`@rido/pricing`) is
- * the caller's job, the same division of labour `src/lib/fares/server.ts` holds for fare quoting.
+ * position. Nothing here does money math except handing figures to `@rido/pricing` — `tiers.ts`'s
+ * `tierPositionFor` and `roundHalfUpDiv` are called, never reimplemented, the same division of
+ * labour `src/lib/fares/server.ts` holds for fare quoting.
  */
 
 /**
@@ -40,9 +48,17 @@ export async function getActiveCommissionTiers(): Promise<CommissionResult<Commi
   };
 }
 
+/** A driver's whole `driver_monthly_stats` row for the current month, cents and count alike. */
+export interface DriverMonthSummary {
+  readonly grossFareCents: number;
+  readonly commissionCents: number;
+  readonly payoutCents: number;
+  readonly ridesCount: number;
+}
+
 /**
- * A driver's gross fares so far this month, in cents — the `mtdGrossCents` `commissionForRide`
- * needs to bracket a new ride at the right point in the schedule.
+ * A driver's month-to-date position: gross fares, commission, payout and ride count — the whole
+ * `driver_monthly_stats` row for the current month, not just the gross figure.
  *
  * Reads `driver_monthly_stats` directly rather than the `driver_month_to_date()` RPC: that RPC is
  * deliberately service-role only — its migration comment explains that as `SECURITY INVOKER`, a
@@ -54,12 +70,14 @@ export async function getActiveCommissionTiers(): Promise<CommissionResult<Commi
  * The month bucket comes from `rido_year_month()` — root `CLAUDE.md` invariant 9's one canonical
  * place for that conversion — never re-derived here.
  *
- * A driver with no rides yet this month has **no row at all**, not a zeroed one, so a missing row
- * reads as 0 cents rather than a failure.
+ * **A driver with no completed rides this month has no row at all**, not a zeroed one — the table
+ * is written only by the `bump_monthly_stats()` trigger on ride completion. A missing row reads as
+ * every figure being 0 rather than a failure, which is also how a genuinely brand-new driver's
+ * first visit to `/drive` should render: nothing earned yet, not an error.
  */
-export async function getDriverMonthToDateCents(
+export async function getDriverMonthSummary(
   driverId: string,
-): Promise<CommissionResult<number>> {
+): Promise<CommissionResult<DriverMonthSummary>> {
   const supabase = await createServerClient();
 
   const { data: yearMonth, error: yearMonthError } = await supabase.rpc("rido_year_month", {
@@ -71,7 +89,7 @@ export async function getDriverMonthToDateCents(
 
   const { data, error } = await supabase
     .from("driver_monthly_stats")
-    .select("gross_fare_cents")
+    .select("gross_fare_cents, commission_cents, payout_cents, rides_count")
     .eq("driver_id", driverId)
     .eq("year_month", yearMonth)
     .maybeSingle();
@@ -80,5 +98,89 @@ export async function getDriverMonthToDateCents(
     return failed("We couldn't load your month-to-date earnings. Try again in a moment.");
   }
 
-  return { ok: true, data: data?.gross_fare_cents ?? 0 };
+  return {
+    ok: true,
+    data: {
+      grossFareCents: data?.gross_fare_cents ?? 0,
+      commissionCents: data?.commission_cents ?? 0,
+      payoutCents: data?.payout_cents ?? 0,
+      ridesCount: data?.rides_count ?? 0,
+    },
+  };
+}
+
+/**
+ * A driver's gross fares so far this month, in cents — the `mtdGrossCents` `commissionForRide`
+ * needs to bracket a new ride at the right point in the schedule.
+ *
+ * Delegates to `getDriverMonthSummary()` and projects one field, so there is exactly one place
+ * that knows how to find "this driver's row for this month" rather than two queries that could
+ * drift apart.
+ */
+export async function getDriverMonthToDateCents(
+  driverId: string,
+): Promise<CommissionResult<number>> {
+  const summary = await getDriverMonthSummary(driverId);
+  if (!summary.ok) return summary;
+  return { ok: true, data: summary.data.grossFareCents };
+}
+
+/**
+ * Everything `TierProgress` needs to render, already computed — the component only formats.
+ * `.claude/rules/money.md`: "a number shown to a driver comes from a snapshot or from
+ * `@rido/pricing` — not from arithmetic in a component." Every figure here traces to one of
+ * those two places.
+ */
+export interface DriverTierProgress {
+  /** The full band set, so the meter can draw every segment, not only the current one. */
+  readonly tiers: readonly CommissionTier[];
+  /** Where this month's gross sits among the bands — `"climbing"` toward a lower rate, or
+   *  `"top"`, already in the cheapest one. */
+  readonly position: TierPosition;
+  readonly ridesCount: number;
+  readonly grossFareCents: number;
+  readonly payoutCents: number;
+  /**
+   * `payoutCents` as a proportion of `grossFareCents`, in basis points — the MONTH's blended keep
+   * rate, distinct from the MARGINAL rate `position.currentTier.rateBps` implies for the next
+   * fare (`docs/business/monetization.md` warns explicitly against presenting one as the other).
+   * `null` when `grossFareCents` is 0: nothing to blend yet, and dividing by it would either throw
+   * or read as a nonsensical 0%/NaN — a driver with no rides this month has no month rate to show.
+   */
+  readonly blendedKeepRateBps: number | null;
+}
+
+/**
+ * Assembles `DriverTierProgress` from the two reads above and `tierPositionFor()`
+ * (`@rido/pricing`). One network round trip's worth of composition, kept out of the component and
+ * out of `drive/page.tsx`, so neither has to reason about the shape of `driver_monthly_stats` or
+ * the tier table directly.
+ */
+export async function getDriverTierProgress(
+  driverId: string,
+): Promise<CommissionResult<DriverTierProgress>> {
+  const tiers = await getActiveCommissionTiers();
+  if (!tiers.ok) return tiers;
+
+  const summary = await getDriverMonthSummary(driverId);
+  if (!summary.ok) return summary;
+
+  const position = tierPositionFor(cents(summary.data.grossFareCents), tiers.data);
+
+  const blendedKeepRateBps =
+    summary.data.grossFareCents === 0
+      ? null
+      : roundHalfUpDiv(summary.data.payoutCents * BPS_DENOMINATOR, summary.data.grossFareCents);
+
+  return {
+    ok: true,
+    data: {
+      tiers: tiers.data,
+      position,
+      ridesCount: summary.data.ridesCount,
+      grossFareCents: summary.data.grossFareCents,
+      payoutCents: summary.data.payoutCents,
+      blendedKeepRateBps,
+    },
+  };
 }

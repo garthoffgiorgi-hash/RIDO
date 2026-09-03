@@ -9,8 +9,9 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BPS_DENOMINATOR } from "./money.ts";
-import { type CommissionTier, normalizeTiers } from "./tiers.ts";
+import { commissionForRide } from "./commission.ts";
+import { BPS_DENOMINATOR, cents } from "./money.ts";
+import { type CommissionTier, normalizeTiers, tierPositionFor } from "./tiers.ts";
 
 /**
  * A well-formed set built from its internal cut points: N boundaries produce N+1 bands, with
@@ -157,4 +158,110 @@ test("does not mutate the caller's array", () => {
     snapshot,
     "normalizeTiers sorted the caller's array in place",
   );
+});
+
+test("tierPositionFor: MTD zero starts in the first band", () => {
+  const position = tierPositionFor(cents(0), bandsOf(7, 19));
+  assert.equal(position.kind, "climbing");
+  if (position.kind === "climbing") {
+    assert.equal(position.currentTier.tierOrder, 1);
+    assert.equal(position.centsIntoCurrentBand, 0);
+    assert.equal(position.currentBandWidthCents, 7);
+    assert.equal(position.centsToNextTier, 7);
+  }
+});
+
+test("tierPositionFor: a position exactly on a boundary belongs to the band above it", () => {
+  // Half-open [lower, upper): 7 is the first band's exclusive upper bound and the second band's
+  // inclusive lower bound. This is the case commissionForRide's own walk depends on — the next
+  // cent of fare at this position is charged the SECOND band's rate, so the position must read
+  // as "in" that band, not "just finished" the first one.
+  const position = tierPositionFor(cents(7), bandsOf(7, 19));
+  assert.equal(position.kind, "climbing");
+  if (position.kind === "climbing") {
+    assert.equal(position.currentTier.tierOrder, 2);
+    assert.equal(position.centsIntoCurrentBand, 0);
+  }
+});
+
+test("tierPositionFor: one cent below a boundary is still the lower band", () => {
+  const position = tierPositionFor(cents(6), bandsOf(7, 19));
+  assert.equal(position.kind, "climbing");
+  if (position.kind === "climbing") {
+    assert.equal(position.currentTier.tierOrder, 1);
+    assert.equal(position.centsToNextTier, 1);
+  }
+});
+
+test("tierPositionFor: deep inside the unbounded top band reports kind 'top'", () => {
+  const position = tierPositionFor(cents(1_000_000), bandsOf(7, 19));
+  assert.equal(position.kind, "top");
+  if (position.kind === "top") {
+    assert.equal(position.currentTier.tierOrder, 3);
+    assert.equal(position.centsIntoCurrentBand, 1_000_000 - 19);
+  }
+});
+
+test("tierPositionFor: a single-band (all-unbounded) tier set is always 'top'", () => {
+  for (const mtd of [0, 1, 500_000]) {
+    const position = tierPositionFor(cents(mtd), bandsOf());
+    assert.equal(position.kind, "top", `MTD ${mtd} should read as top for a single-band set`);
+  }
+});
+
+test("tierPositionFor: centsIntoCurrentBand + centsToNextTier === currentBandWidthCents", () => {
+  const tiers = bandsOf(3, 7, 19, 44);
+  for (let mtd = 0; mtd < 44; mtd += 1) {
+    const position = tierPositionFor(cents(mtd), tiers);
+    if (position.kind !== "climbing") continue;
+    assert.equal(
+      position.centsIntoCurrentBand + position.centsToNextTier,
+      position.currentBandWidthCents,
+      `mismatch at mtd=${mtd}`,
+    );
+  }
+});
+
+test("tierPositionFor rejects the same malformed tier sets normalizeTiers does", () => {
+  assert.throws(() => tierPositionFor(cents(0), []), /set is empty/);
+});
+
+test("tierPositionFor rejects a negative or non-integer position", () => {
+  assert.throws(() => tierPositionFor(-1 as never, bandsOf(7)), /non-negative integer/);
+  assert.throws(() => tierPositionFor(0.5 as never, bandsOf(7)), /non-negative integer/);
+});
+
+test("tierPositionFor agrees with commissionForRide about which band a ride bills against", () => {
+  // The property that actually matters: the band tierPositionFor reports as "current" must be the
+  // band commissionForRide actually charges from at that exact MTD position. If these two ever
+  // disagree, the progress card would show a driver one tier while their ride bills another.
+  //
+  // The probe fare is deliberately a MULTIPLE OF BPS_DENOMINATOR (10_000): that is what makes the
+  // comparison exact rather than approximate. A ride's blended commissionRateBps is itself a
+  // rounded figure (roundHalfUpDiv applied twice — once to get commissionCents, once to re-express
+  // it as a rate), so an arbitrary probe size only approximates the band's own rate. When fareCents
+  // is a multiple of BPS_DENOMINATOR and the ride stays fully within one band, both roundings land
+  // on an exact multiple with zero remainder, so the recovered rate equals the band's rate bit for
+  // bit — no tolerance needed, matching how every other test in this package asserts exactness.
+  //
+  // Wide, arbitrary bands (not the seeded 100000/300000) so a $100 probe fits inside each one.
+  const tiers = bandsOf(53_000, 141_000);
+  const probeFareCents = 10_000;
+  // Each position is comfortably inside its band — probeFareCents doesn't cross the next boundary
+  // — except the last two, deliberately inside the unbounded top band where crossing is moot.
+  const positions = [0, 20_000, 53_000, 60_000, 141_000, 200_000];
+
+  for (const mtd of positions) {
+    const position = tierPositionFor(cents(mtd), tiers);
+    const probe = commissionForRide({
+      fareCents: cents(probeFareCents),
+      mtdGrossCents: cents(mtd),
+      tiers,
+    });
+    assert.equal(
+      probe.commissionRateBps,
+      position.currentTier.rateBps,
+      `mtd=${mtd}: tierPositionFor says tier ${position.currentTier.tierOrder} (${position.currentTier.rateBps}bps), commissionForRide's $100 probe charged ${probe.commissionRateBps}bps`,
+    );
+  }
 });

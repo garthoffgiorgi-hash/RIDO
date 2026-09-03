@@ -13,21 +13,11 @@ import type { Database } from "@/types/database.types";
  */
 
 /**
- * The whole generated `drivers` row, plus the one column the generated types don't know about yet.
- *
- * `accepting_rides` ships in `20260902130000_enable_driver_availability.sql` (ADR-0019). The
- * committed `database.types.ts` was last generated against a schema that stops at
- * `20260902120200_enable_late_cancellation.sql`, so it has neither this column nor the
- * `ride_declines` table — the migrations are live (the toggle works), the *generation* is what is
- * stale. Re-run it and this intersection collapses back to the generated `Row` alone.
- *
- * This and the `ride_declines` hatch in `src/lib/rides/server.ts` are the last two of these. The
- * `payouts/types.ts` and `payments/types.ts` bridges that used to sit beside them are gone: their
- * tables reached the generated types, so the hand-written shapes came out.
+ * The whole generated `drivers` row. `accepting_rides` (`20260902130000_enable_driver_availability.sql`,
+ * ADR-0019) has been in the generated `Row` since `database.types.ts` was regenerated against the
+ * live schema — this alias exists only so callers don't spell out the `Database["public"]...` path.
  */
-export type DriverProfile = Database["public"]["Tables"]["drivers"]["Row"] & {
-  readonly accepting_rides: boolean;
-};
+export type DriverProfile = Database["public"]["Tables"]["drivers"]["Row"];
 
 /**
  * Whether this driver may currently accept rides.

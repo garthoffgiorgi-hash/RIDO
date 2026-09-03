@@ -45,24 +45,6 @@ import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
 const messageOf = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
-/**
- * `ride_declines` (ADR-0019) is absent from the committed `database.types.ts`, which was last
- * generated against a schema stopping at `20260902120200_enable_late_cancellation.sql`. The table
- * is live — declining works — so it is the *generation* that is stale, not the migration. Until it
- * is re-run, these two touch points reach the table through this narrow escape hatch rather than a
- * whole bridge file. Every row it produces is cast to a real shape at the query boundary, so
- * nothing downstream is `any`.
- *
- * **This and `DriverProfile`'s `accepting_rides` intersection are the last two stopgaps of this
- * kind.** The `payouts/types.ts` and `payments/types.ts` bridges are deleted: `driver_payouts`,
- * `ride_charges` and `rider_payment_profiles` all reached the generated types, so those modules now
- * derive their row shapes from the generator instead of restating them by hand.
- */
-type UntypedTables = {
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate ride_declines
-  from: (table: string) => any;
-};
-
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
 
@@ -452,13 +434,13 @@ export async function listOpenRequests(
   // Filtered in JS rather than through PostgREST's `.not("id", "in", …)`, which needs a
   // hand-built parenthesised list and renders an empty one as `in ()` — a syntax error. A pool
   // large enough for that to matter wants a SQL anti-join instead, not a longer string.
-  const { data: declined } = (await (supabase as unknown as UntypedTables)
+  const { data: declined } = await supabase
     .from("ride_declines")
     .select("ride_id")
     .in(
       "ride_id",
       openRides.map((ride) => ride.id),
-    )) as { data: { ride_id: string }[] | null };
+    );
 
   const declinedIds = new Set<string>((declined ?? []).map((row) => row.ride_id));
   const candidates = openRides.filter((ride) => !declinedIds.has(ride.id));
@@ -586,7 +568,7 @@ export async function declineRide(rideId: string): Promise<RidesResult<null>> {
     return failed("You don't have a driver profile yet.");
   }
 
-  const service = createServiceRoleClient() as unknown as UntypedTables;
+  const service = createServiceRoleClient();
 
   const { error } = await service
     .from("ride_declines")

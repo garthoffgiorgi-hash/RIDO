@@ -18,8 +18,8 @@ import {
   type StripeAccount,
 } from "@/lib/stripe/server.ts";
 import { createServerClient, createServiceRoleClient } from "@/lib/supabase/server";
+import type { Database } from "@/types/database.types";
 import { failed, type PayoutsResult } from "./result.ts";
-import type { DriverConnectColumns, DriverPayoutRow } from "./types.ts";
 
 /**
  * What RIDO owes a driver, and getting it to them.
@@ -34,21 +34,57 @@ import type { DriverConnectColumns, DriverPayoutRow } from "./types.ts";
  * If you find yourself adding arithmetic to a cents value here, something has gone wrong upstream.
  */
 
-/**
- * `driver_payouts` and the two new `drivers` columns are not in the generated types yet — see
- * `./types.ts`. These casts are the whole of the bridge, kept at the query boundary so the rows
- * they produce are strongly typed everywhere downstream. Remove with `./types.ts`.
- */
-type UntypedClient = {
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate this migration; see ./types.ts
-  from: (table: string) => any;
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate this migration; see ./types.ts
-  rpc: (fn: string, args?: Record<string, unknown>) => any;
-};
-
 /** Every column of `DriverPayoutRow`, named once so the three reads below cannot drift apart. */
 const PAYOUT_COLUMNS =
   "id, driver_id, ride_id, amount_cents, status, stripe_transfer_id, failure_reason, created_at, updated_at";
+
+type PayoutTable = Database["public"]["Tables"]["driver_payouts"]["Row"];
+
+/**
+ * `driver_payouts.status`, narrowed.
+ *
+ * The generated types call this column `string`, and that is not laziness in the generator: the
+ * column is `text` with a CHECK constraint rather than a Postgres enum, and `supabase gen types`
+ * reads column types, not constraints. So this union is the one thing the old hand-written
+ * `types.ts` bridge did that the generator genuinely cannot — and dropping it to "just use the
+ * generated type" would let `payout.status === "faild"` compile silently, on a money path.
+ *
+ * Source of truth: `driver_payouts_status_check` in
+ * `supabase/migrations/20260901120000_create_driver_payouts.sql`.
+ */
+export type PayoutStatus = "pending" | "paid" | "failed";
+
+/**
+ * A ledger row, exactly as this module reads it: the `PAYOUT_COLUMNS` projection of the generated
+ * row, with `status` narrowed to what the CHECK permits.
+ *
+ * Derived rather than declared, which is the whole point of deleting the bridge. The old version
+ * spelled out nine fields by hand and had already fallen behind the schema — it never gained
+ * `attempt_count`, `settling` or `settling_since` from ADR-0016's attempt claim, and nothing
+ * complained, because a hand-written shape cannot disagree with a database it isn't derived from.
+ * Now a renamed or dropped column fails this `Pick` at compile time.
+ */
+export type DriverPayoutRow = Omit<
+  Pick<
+    PayoutTable,
+    | "id"
+    | "driver_id"
+    | "ride_id"
+    | "amount_cents"
+    | "status"
+    | "stripe_transfer_id"
+    | "failure_reason"
+    | "created_at"
+    | "updated_at"
+  >,
+  "status"
+> & { readonly status: PayoutStatus };
+
+/** The two Connect columns `getPayoutSummary` reads off a driver row, from the generated type. */
+type DriverConnectColumns = Pick<
+  Database["public"]["Tables"]["drivers"]["Row"],
+  "stripe_payouts_enabled" | "stripe_details_submitted"
+>;
 
 export interface PayoutSummary {
   readonly connectStatus: ConnectStatus;
@@ -76,7 +112,7 @@ export interface PayoutSummary {
 export async function getPayoutSummary(
   driver: DriverProfile,
 ): Promise<PayoutsResult<PayoutSummary>> {
-  const supabase = (await createServerClient()) as unknown as UntypedClient;
+  const supabase = await createServerClient();
 
   const { data, error } = await supabase
     .from("driver_payouts")
@@ -203,7 +239,7 @@ export async function syncConnectColumns(
   stripeAccountId: string,
   flags: { payoutsEnabled: boolean; detailsSubmitted: boolean },
 ): Promise<PayoutsResult<null>> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { error } = await service
     .from("drivers")
@@ -260,7 +296,7 @@ export type SettleOutcome =
  * collapsing two simultaneous callers on the same row to one.
  */
 async function settle(payout: DriverPayoutRow): Promise<PayoutsResult<SettleOutcome>> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data: attempt, error: claimError } = await service.rpc("claim_driver_payout_attempt", {
     p_payout_id: payout.id,
@@ -379,7 +415,7 @@ async function settle(payout: DriverPayoutRow): Promise<PayoutsResult<SettleOutc
  */
 export async function payoutRide(rideId: string): Promise<PayoutsResult<SettleOutcome | null>> {
   await requireUser();
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
 
   const { data, error } = await service
     .from("driver_payouts")
@@ -414,7 +450,7 @@ export async function payoutRide(rideId: string): Promise<PayoutsResult<SettleOu
  * `/drive`, exactly as if `retryPayout` had been clicked on it directly.
  */
 export async function settlePendingPayoutsForDriver(driver: DriverProfile): Promise<void> {
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
   const { data, error } = await service
     .from("driver_payouts")
     .select(PAYOUT_COLUMNS)
@@ -434,7 +470,7 @@ export async function retryPayout(payoutId: string): Promise<PayoutsResult<Settl
   const driver = await getOwnDriverProfile(user);
   if (!driver) return failed("You don't have a driver profile yet.");
 
-  const service = createServiceRoleClient() as unknown as UntypedClient;
+  const service = createServiceRoleClient();
   const { data, error } = await service
     .from("driver_payouts")
     .select(PAYOUT_COLUMNS)

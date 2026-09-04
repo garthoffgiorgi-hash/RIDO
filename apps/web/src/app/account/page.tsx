@@ -6,7 +6,9 @@ import { requireUser } from "@/lib/auth/server";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { isActiveDriver } from "@/lib/drivers/status";
 import { getPaymentProfile } from "@/lib/payments/server";
+import { ensureRiderProfile } from "@/lib/riders/server.ts";
 import { PaymentCard } from "./PaymentCard";
+import { RiderNameCard } from "./RiderNameCard";
 
 /**
  * Signed-in landing page. One surface, role-aware: everyone gets a way to book a ride, and
@@ -26,6 +28,10 @@ export default async function AccountPage() {
   const user = await requireUser();
   const driver = await getOwnDriverProfile(user);
   const paymentProfile = await getPaymentProfile(user);
+  // get-or-create, not a plain read: this is the one guaranteed visit every rider eventually makes,
+  // so it is the backstop that gives a phone sign-up (no metadata name) or a pre-ADR-0022 account
+  // a row to edit, even if they never book a ride first.
+  const riderProfile = await ensureRiderProfile(user);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-ivory p-6">
@@ -59,6 +65,8 @@ export default async function AccountPage() {
             Book a ride
           </Button>
         </Card>
+
+        {riderProfile.ok && <RiderNameCard profile={riderProfile.data} />}
 
         <PaymentCard profile={paymentProfile} />
 

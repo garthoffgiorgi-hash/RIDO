@@ -5,9 +5,9 @@ never edit a migration that has been applied — add a new one.
 
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
 `ride_charges` · `rider_payment_profiles` · `ride_declines` · `commission_tiers` ·
-`fare_rate_cards`. Field-level detail: `docs/architecture/data-model.md`. Flows:
-`docs/architecture/ride-completion.md` · `docs/architecture/payouts.md` ·
-`docs/architecture/rider-charging.md`.
+`fare_rate_cards` · `rider_profiles` · `driver_public_profiles` · `ride_ratings`. Field-level
+detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-completion.md` ·
+`docs/architecture/payouts.md` · `docs/architecture/rider-charging.md`.
 
 ## Schema rules
 
@@ -63,8 +63,9 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
 - **A nullable column compared with `IN (subquery)` in an RLS policy silently hides rows where it's
   null** — three-valued logic makes it neither `TRUE` nor `FALSE`. This bit `rides_select_own_as_driver`
   when `driver_id` became nullable (ADR-0012): every open request was invisible until ADR-0013 added
-  a policy checking `driver_id IS NULL` explicitly. Check for it on the next nullable column added to
-  a table already carrying an `IN (subquery)` policy.
+  a policy checking `driver_id IS NULL` explicitly. `rider_profiles`/`driver_public_profiles`'
+  cross-party policies (ADR-0022) use `exists` for the same reason, reaching across a table for
+  the first time in this schema.
 - Commission columns on `rides` are writable **only by the service role**. Not by the driver, not
   by the rider, not by an authenticated user with a clever payload.
 - **`rides` is the one table in the `supabase_realtime` publication.** Realtime authorizes every
@@ -86,9 +87,8 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   re-checks the MTD position, and writes. The snapshot and `status = 'completed'` are **one
   UPDATE**, because `rides_commission_present_iff_completed` won't accept them as two. Full flow
   and the concurrency argument: `docs/architecture/ride-completion.md` (ADR-0008). **The app now
-  calls it** (ADR-0014) — `apps/web/CLAUDE.md`'s Rules section is where the caller-side pattern
-  (forward the driver's own token, never the service-role key) lives, since that half of the
-  contract is the app's to keep, not this function's.
+  calls it** (ADR-0014) — `apps/web/CLAUDE.md`'s Rules section covers the caller-side pattern
+  (forward the driver's own token, never the service-role key).
 - **The transaction belongs in SQL, not the function.** supabase-js auto-commits every call, so a
   lock taken from Deno is released before the commission is computed. Correctness comes from
   compare-and-swap: the caller passes back the MTD figure it rated against, and
@@ -157,10 +157,10 @@ Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `dr
   id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
   conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
   minutes) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` after migrations — **caught up**: all ten tables typed, no
-  hand-written stopgap left anywhere. `npm run types:generate` needs Docker, else pass
-  `--project-id <ref>`; `>` truncates the file *before* the command runs, so a failure empties it —
-  check `git diff`.
+- Regenerate `database.types.ts` after migrations — **one run behind again**: `rider_profiles`,
+  `driver_public_profiles`, `ride_ratings` (ADR-0022) postdate it, the gap `ride_declines` once
+  left. `apps/web/src/lib/riders/server.ts` bridges it with the same narrow `UntypedTables` hatch.
+  `npm run types:generate` needs Docker, else `--project-id <ref>`; `>` truncates the file first.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

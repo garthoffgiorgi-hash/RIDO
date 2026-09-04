@@ -54,6 +54,39 @@ to the built-in email sender.
 Until one is configured, every phone flow errors. `authErrorMessage()` catches this case and says
 so plainly rather than showing a generic failure.
 
+## 5. Creating a test account without fixing 1–3 first
+
+Useful for a second driver account today, or any testing before templates and SMTP are set up:
+none of items 1–3 above have to be fixed for this to work, because it skips email entirely.
+
+**Authentication → Users → Add user**, check **Auto Confirm User**. That creates a confirmed
+`auth.users` row directly — no email round-trip, so the built-in sender's organisation-only
+restriction (item 3) never comes into play.
+
+**This does not test the real signup flow.** It proves nothing about the email templates or
+`/auth/confirm` — it is a way to get a second account past the auth layer while those stay broken,
+not a substitute for fixing them.
+
+A driving test account also needs a `drivers` row — there is no self-serve "become a driver" flow
+(root `CLAUDE.md`, `apps/web/CLAUDE.md`'s Rider/driver section), only service-role/admin creation.
+Run this in the project's SQL editor, once the user above exists:
+
+```sql
+insert into drivers (
+  auth_user_id, full_name, email,
+  status, background_check_status, dmv_check_status, vehicle_inspection_status
+)
+select id, 'Test Driver Two', email,
+       'active', 'passed', 'passed', 'passed'
+from auth.users
+where email = 'the address you just created';
+```
+
+`status = 'active'` requires both check columns `'passed'` — `drivers_activation_gate` (root
+CLAUDE.md invariant 6) refuses any other combination, the same gate a real vetted driver has to
+clear. `accepting_rides` defaults to `true`, so this account is online and visible in the open pool
+immediately; no separate step needed to bring it online for a cross-driver test.
+
 ## Known-good local values
 
 | Setting | Value |

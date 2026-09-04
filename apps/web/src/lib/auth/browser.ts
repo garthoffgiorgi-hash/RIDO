@@ -72,25 +72,39 @@ export async function sendSignInCode(phone: string): Promise<AuthResult<{ sentTo
 // Creating an account. The only two functions in the app that can.
 // ---------------------------------------------------------------------------------------------
 
-export async function signUpWithEmail(email: string, password: string): Promise<AuthResult> {
+/**
+ * `name` lands in `options.data.display_name` — Supabase Auth's `raw_user_meta_data`, which is
+ * where a name has to go: nothing is written to `rider_profiles` at sign-up time (no trigger on
+ * `auth.users` exists in this repo, and ADR-0022 explains why not to add one). `ensureRiderProfile()`
+ * (`src/lib/riders/server.ts`) reads it back out of `user_metadata` the first time it creates that
+ * rider's row — at booking, or on their first `/account` visit, whichever comes first.
+ */
+export async function signUpWithEmail(
+  email: string,
+  password: string,
+  name: string,
+): Promise<AuthResult> {
   const supabase = createBrowserClient();
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: confirmUrl() },
+    options: { emailRedirectTo: confirmUrl(), data: { display_name: name.trim() } },
   });
   return error ? failed(authErrorMessage(error.message)) : succeeded;
 }
 
 /** Texts a code that registers the number if it's new. Passwordless — the code is the credential. */
-export async function signUpWithPhone(phone: string): Promise<AuthResult<{ sentTo: string }>> {
+export async function signUpWithPhone(
+  phone: string,
+  name: string,
+): Promise<AuthResult<{ sentTo: string }>> {
   const normalised = toE164(phone);
   if (!normalised) return failed(NOT_A_PHONE);
 
   const supabase = createBrowserClient();
   const { error } = await supabase.auth.signInWithOtp({
     phone: normalised,
-    options: { shouldCreateUser: true },
+    options: { shouldCreateUser: true, data: { display_name: name.trim() } },
   });
   return error
     ? failed(authErrorMessage(error.message))

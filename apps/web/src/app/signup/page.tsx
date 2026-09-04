@@ -42,6 +42,7 @@ export default function SignUpPage() {
   const router = useRouter();
   const [method, setMethod] = useState<Method>("email");
   const [step, setStep] = useState<Step>("credentials");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
@@ -71,14 +72,14 @@ export default function SignUpPage() {
     setLoading(true);
 
     if (method === "email") {
-      const result = await signUpWithEmail(email, password);
+      const result = await signUpWithEmail(email, password, name);
       if (!result.ok) setError(result.message);
       else setStep("verify");
       setLoading(false);
       return;
     }
 
-    const result = await signUpWithPhone(phone);
+    const result = await signUpWithPhone(phone, name);
     if (!result.ok) {
       setError(result.message);
     } else {
@@ -153,6 +154,17 @@ export default function SignUpPage() {
               />
 
               <form onSubmit={handleSignUp} className="flex flex-col gap-4" noValidate>
+                <Input
+                  label="Your name"
+                  type="text"
+                  autoComplete="name"
+                  required
+                  disabled={loading}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Alex Rivera"
+                />
+
                 {method === "email" ? (
                   <>
                     <Input

@@ -103,11 +103,11 @@ path verified. **Open:** the commercial insurance quote — gates the economics,
 `proxy.ts` session refresh, `/signup` (explicit account creation, email or phone), `/login`
 (sign-in only: password, email link, or SMS code), `/auth/confirm`, `/auth/signout`, `/account`.
 Confirmed working against the real project.
-⬜ Finish dashboard config: the "Confirm signup"/"Magic Link" email templates still use
-Supabase's default (a link with no code, and not routed through `/auth/confirm`) instead of the
-`{{ .RedirectTo }}&token_hash={{ .TokenHash }}&type=...` pattern in `apps/web/CLAUDE.md`; custom
-SMTP (the built-in sender only reaches the project's own team addresses); an SMS provider for
-phone. Non-blocking — deferred, not forgotten.
+⬜ Finish dashboard config: the "Confirm signup"/"Magic Link" templates still use Supabase's default
+(a link with no code, pointed at its own hosted page, not `/auth/confirm`) instead of the pattern
+`docs/architecture/auth-setup.md` documents; custom SMTP is unconfigured, so the built-in sender
+reaches only the project's own team addresses. **Blocked creating a second driver test account**
+until `auth-setup.md` §5 gave a path around it without email. Phone SMS stays deferred, untested.
 ✅ **Five tables as migrations** — `drivers`, `subscriptions`, `rides`, `driver_monthly_stats`,
 `commission_tiers` (no `riders` table — `rides.rider_id` references `auth.users` directly).
 Verified against a real local Postgres: every constraint, trigger, and RLS policy exercised and

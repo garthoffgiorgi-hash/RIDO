@@ -38,6 +38,12 @@ over that channel: the row leaves the other drivers' RLS visibility at the insta
 there is no subscriber left to notify. Mitigated by refetching on any arrival and on tab focus,
 never by widening the policy.
 
+**Riders and drivers see each other now** (ADR-0022). A rider's sheet shows a driver card — name,
+vehicle, rating — the moment one accepts; a driver's current-ride card shows the rider's name the
+same way. Both are scoped to the live ride they share and vanish the instant it ends, through the
+schema's first cross-party RLS policies. Signup now asks a name — the fact nothing in RIDO had ever
+collected — and two-directional ratings close `rate`, the last unbuilt state in the rider blueprint.
+
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
 whole pilot), the native driver app, and dispatch/proximity matching. Neither blocks the business
 model the way an empty platform balance did; they're the day-to-day usability gaps left once the

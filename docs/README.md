@@ -37,6 +37,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | **Who absorbs card processing** (RIDO does, pilot-scoped), and why payouts are per-ride | `decisions/0015-connect-payouts-per-ride.md` |
 | Why a realtime event is a notification and never a data channel; which surfaces subscribe | `decisions/0020-realtime-ride-status.md` |
 | Why the open-pool board hears arrivals but structurally cannot hear removals | `decisions/0021-realtime-open-pool.md` |
+| Rider identity, cross-party visibility during a live ride, and ratings | `decisions/0022-rider-identity-and-ratings.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |

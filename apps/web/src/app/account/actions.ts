@@ -1,14 +1,16 @@
 "use server";
 
 import * as payments from "@/lib/payments/server";
+import * as riders from "@/lib/riders/server.ts";
 
 /**
- * Thin Server Action bridge over `src/lib/payments/server.ts`, matching
- * `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`. That module carries
- * `import "server-only"` and is not itself `"use server"`, so `PaymentCard` — a Client Component —
- * cannot reach it directly. This file is the only way across.
+ * Thin Server Action bridge over `src/lib/payments/server.ts` and `src/lib/riders/server.ts`,
+ * matching `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`. Both modules carry
+ * `import "server-only"` and are not themselves `"use server"`, so a Client Component — `PaymentCard`,
+ * `RiderNameCard` — cannot reach either directly. This file is the only way across.
  *
- * `getPaymentProfile` needs no wrapper: `account/page.tsx` is a Server Component and reads it.
+ * `getPaymentProfile`/`ensureRiderProfile` need no wrapper for their own reads: `account/page.tsx`
+ * is a Server Component and calls them directly.
  */
 
 export async function startCardSetup() {
@@ -17,4 +19,8 @@ export async function startCardSetup() {
 
 export async function saveCard(setupIntentId: string) {
   return payments.recordCardFromSetup(setupIntentId);
+}
+
+export async function setDisplayName(name: string) {
+  return riders.setDisplayName(name);
 }

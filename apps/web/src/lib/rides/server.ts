@@ -14,6 +14,7 @@ import { getActiveCommissionTiers, getDriverMonthToDateCents } from "@/lib/commi
 import { getOwnDriverProfile } from "@/lib/drivers/server.ts";
 import type { DriverProfile } from "@/lib/drivers/status.ts";
 import { getPaymentPolicy, quoteRide } from "@/lib/fares/server";
+import { ensureRiderProfile } from "@/lib/riders/server.ts";
 import { measureRoute } from "@/lib/maps/server.ts";
 import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
 import {
@@ -44,6 +45,79 @@ import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+
+/**
+ * `rider_profiles` and `driver_public_profiles` (20260904*) postdate the generated types. Same
+ * narrow escape hatch this file used for `ride_declines` before its own regeneration retired it
+ * (PR #41) — every row it produces is cast to a real shape at the query boundary, so nothing
+ * downstream is `any`. Delete it the same way once `npm run types:generate` runs against these
+ * three migrations. Cast only at the call site, never the whole `supabase` client — the `rides`
+ * queries around it stay fully typed.
+ */
+type UntypedTables = {
+  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate rider_profiles/driver_public_profiles
+  from: (table: string) => any;
+};
+
+/** `rating_sum / rating_count`, or `null` with nothing to average yet. Not money — no `@rido/pricing` rounding rule applies; a plain one-decimal round is honest about a 5-star scale. */
+function ratingAverage(count: number, sum: number): number | null {
+  return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
+}
+
+/**
+ * Reads the driver card a rider's live-ride sheet shows, authorized by
+ * `driver_public_profiles_select_as_active_rider` — the caller must already be that ride's own
+ * rider for the read to return anything at all. `null` on a `'requested'` ride (no driver_id yet),
+ * on any status the cross-party policy doesn't cover, or if the row simply isn't there.
+ */
+async function readDriverCard(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  status: RideStatus,
+  driverId: string | null,
+): Promise<DriverCard | null> {
+  if (driverId === null || (status !== "accepted" && status !== "in_progress")) return null;
+
+  const { data } = await (supabase as unknown as UntypedTables)
+    .from("driver_public_profiles")
+    .select("display_name, vehicle_description, vehicle_plate, rating_count, rating_sum")
+    .eq("driver_id", driverId)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    displayName: data.display_name,
+    vehicleDescription: data.vehicle_description,
+    vehiclePlate: data.vehicle_plate,
+    ratingCount: data.rating_count,
+    ratingAverage: ratingAverage(data.rating_count, data.rating_sum),
+  };
+}
+
+/**
+ * Reads the rider card a driver's current-ride card shows, authorized by
+ * `rider_profiles_select_as_active_driver`. Every caller already knows the ride is `'accepted'`/
+ * `'in_progress'` — `rides.rider_id` is never null — so there's no status guard to make here the
+ * way `readDriverCard` needs one for the `'requested'` case.
+ */
+async function readRiderCard(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  riderId: string,
+): Promise<RiderCard | null> {
+  const { data } = await (supabase as unknown as UntypedTables)
+    .from("rider_profiles")
+    .select("display_name, rating_count, rating_sum")
+    .eq("rider_id", riderId)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  return {
+    displayName: data.display_name,
+    ratingCount: data.rating_count,
+    ratingAverage: ratingAverage(data.rating_count, data.rating_sum),
+  };
+}
 
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
@@ -207,7 +281,37 @@ export async function requestRide(
     return { kind: "failed", message };
   }
 
+  // Best-effort, after the ride is genuinely booked: a driver reading this rider's card during the
+  // live ride is what actually needs the row to exist, and that read is minutes away at the
+  // earliest. A failure here must not turn a booked ride into a failed booking — the same posture
+  // `completeRide()` (drive/actions.ts) takes toward the capture/payout calls that follow it.
+  const riderProfile = await ensureRiderProfile(user);
+  if (!riderProfile.ok) {
+    console.error("requestRide: ensureRiderProfile failed after a successful booking", {
+      rideId,
+      message: riderProfile.message,
+    });
+  }
+
   return { kind: "booked", rideId };
+}
+
+/** A driver's rider-facing card, read from `driver_public_profiles` for the duration of a live ride. */
+export interface DriverCard {
+  readonly displayName: string;
+  readonly vehicleDescription: string | null;
+  readonly vehiclePlate: string | null;
+  readonly ratingCount: number;
+  /** `null` when `ratingCount` is 0 — there is nothing to average yet. */
+  readonly ratingAverage: number | null;
+}
+
+/** A rider's driver-facing card, read from `rider_profiles` for the duration of a live ride. */
+export interface RiderCard {
+  readonly displayName: string | null;
+  readonly ratingCount: number;
+  /** `null` when `ratingCount` is 0 — there is nothing to average yet. */
+  readonly ratingAverage: number | null;
 }
 
 export interface ActiveRide {
@@ -217,6 +321,8 @@ export interface ActiveRide {
   readonly pickupAddress: string | null;
   readonly dropoffAddress: string | null;
   readonly requestedAt: string;
+  /** `null` before a driver is assigned, or if that driver has no public profile row yet. */
+  readonly driver: DriverCard | null;
 }
 
 /**
@@ -230,7 +336,7 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("rides")
-    .select("id, status, fare_cents, pickup_address, dropoff_address, requested_at")
+    .select("id, status, driver_id, fare_cents, pickup_address, dropoff_address, requested_at")
     .eq("rider_id", user.id)
     .in("status", ACTIVE_STATUSES)
     .maybeSingle();
@@ -247,6 +353,7 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
     pickupAddress: data.pickup_address,
     dropoffAddress: data.dropoff_address,
     requestedAt: data.requested_at,
+    driver: await readDriverCard(supabase, data.status as RideStatus, data.driver_id),
   };
 }
 
@@ -593,6 +700,8 @@ export interface DriverActiveRide {
   readonly driverPayoutCents: number;
   readonly commissionRateBps: number;
   readonly startedAt: string | null;
+  /** `null` only if the rider has no profile row yet — every ride in this state has a real rider. */
+  readonly rider: RiderCard | null;
 }
 
 /**
@@ -611,7 +720,7 @@ export async function getDriverActiveRide(
   const supabase = await createServerClient();
   const { data: ride, error } = await supabase
     .from("rides")
-    .select("id, status, fare_cents, pickup_address, dropoff_address, started_at")
+    .select("id, status, rider_id, fare_cents, pickup_address, dropoff_address, started_at")
     .eq("driver_id", driver.id)
     .in("status", ["accepted", "in_progress"])
     .maybeSingle();
@@ -646,6 +755,7 @@ export async function getDriverActiveRide(
       driverPayoutCents,
       commissionRateBps,
       startedAt: ride.started_at,
+      rider: await readRiderCard(supabase, ride.rider_id),
     },
   };
 }

@@ -13,7 +13,7 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — ten core tables
+## Schema — thirteen core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
@@ -76,6 +76,21 @@ Config — what a ride COSTS a rider, per market. The fare-side mirror of `commi
 `id` · `market` (e.g. `san-diego`) · `base_cents` · `per_mile_cents` · `per_minute_cents` · `minimum_fare_cents` · `active` · `effective_from` · plus the three payment columns (ADR-0017, ADR-0018): **`authorization_buffer_bps`** (how much headroom the hold carries over the quote), **`cancellation_fee_cents`**, **`cancellation_grace_seconds`**. No surge column — `quoteFare()` accepts an *optional* `surgeMultiplierBps` that defaults to `NO_SURGE_BPS`, and no caller passes one, so the math is ready for surge while the schema deliberately isn't. Read through `active_fare_rate_card(market)`; every number is seeded by `supabase/seed/fare_rate_cards.sql` and typed nowhere else (root invariant 3's fare half, `../business/fare-pricing.md`).
 **RLS:** readable by `authenticated`, writable by no one — same posture as `commission_tiers`.
 
+### `rider_profiles`
+Who a rider is, the fact `auth.users` alone never held (ADR-0022).
+`rider_id` (PK) → `auth.users`, **cascade** — a pointer and a display cache, same posture `rider_payment_profiles` already takes, not a financial record. `display_name` (nullable — no account before this migration has one), `phone`, `avatar_url`, `rating_count`/`rating_sum` (maintained by `ride_ratings`' trigger only), `created_at`/`updated_at`.
+**RLS:** a rider reads and updates their own row (display fields only — the column grant excludes the rating pair, same "one writer forever → column grant" rule ADR-0019 already applies to `drivers.accepting_rides`). **Plus** the first cross-party policy in the schema: an active driver reads a rider's row for the duration of a ride they share (`status in ('accepted','in_progress')`), via `exists`, never `IN (subquery)` — the nullable-`driver_id` trap `20260830120000` already documented once.
+
+### `driver_public_profiles`
+The rider-safe projection of `drivers` — never a policy granting a rider direct read access to `drivers` itself, which also carries `stripe_account_id` and compliance state that RLS cannot hide column-by-column.
+`driver_id` (PK) → `drivers`, cascade. `display_name` (not null, mirrored from `drivers.full_name`), `vehicle_description` (assembled from year/make/model), `vehicle_plate`, `rating_count`/`rating_sum`, `updated_at`. Kept in sync by a `SECURITY DEFINER` trigger on `drivers` insert/update — required, not optional, since `drivers.accepting_rides` already carries a live `authenticated` UPDATE grant (ADR-0019) that would otherwise run this trigger as that driver's own role and hit RLS.
+**RLS:** a driver reads their own row; a rider reads it for the duration of a ride they share — the mirror of `rider_profiles`' cross-party policy. No `INSERT`/`UPDATE` grant to `authenticated` exists at all — the trigger is the only writer.
+
+### `ride_ratings`
+Two-directional ride ratings — the data behind the `rate` state the rider blueprint named before anything could build it.
+`id` · `ride_id` → `rides`, **restrict** (a record, not a preference — follows `driver_payouts`/`ride_charges`, not `ride_declines`) · `rater_id`/`ratee_id` → `auth.users`, restrict · `direction` (`rider_rates_driver`|`driver_rates_rider`) · `stars` (1–5) · `comment` · `created_at`. Unique on (`ride_id`, `rater_id`). A `BEFORE INSERT` trigger refuses anything but the ride's own completed rider/driver pair; an `AFTER INSERT` trigger rolls the rating into the ratee's aggregate on `driver_public_profiles` or `rider_profiles`.
+**RLS:** a rater reads what they submitted. Deliberately no ratee-side read — the aggregate is public via the two profile tables, an individual comment is not. No `INSERT` grant to `authenticated` at all; every rating is written by the service role.
+
 ## Functions
 
 `rido_year_month(timestamptz)` — the one canonical `America/Los_Angeles` bucketing conversion.
@@ -104,6 +119,13 @@ the snapshot and `status = 'completed'` as one UPDATE. Full account: `ride-compl
 ride and the debt it creates are one atomic act (ADR-0015). `set_updated_at()` — generic, reused
 wherever a table needs a maintained `updated_at`. `prevent_commission_rewrite()` — the write-once
 trigger on `rides`.
+
+`sync_driver_public_profile()` — mirrors `drivers` into `driver_public_profiles` on insert or a
+change to its display columns; `SECURITY DEFINER` because `drivers.accepting_rides` already carries
+a live `authenticated` grant that would otherwise run this as the driver's own role (ADR-0022).
+`validate_ride_rating()` — refuses a `ride_ratings` row unless the ride is completed and the
+rater/ratee pair matches its own rider and driver. `bump_rating_aggregate()` — rolls a new rating
+into the ratee's `rating_count`/`rating_sum` on `driver_public_profiles` or `rider_profiles`.
 
 ## Not built, in this pass or any prior one
 

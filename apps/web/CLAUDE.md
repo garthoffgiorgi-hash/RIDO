@@ -40,6 +40,7 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 | `src/lib/commission/` | Reads what commission looks like *right now* — `getActiveCommissionTiers()`, `getDriverMonthSummary(driverId)` (the whole `driver_monthly_stats` row; `getDriverMonthToDateCents()` delegates to it), `getDriverTierProgress(driverId)` (assembles both plus `tierPositionFor()` into `TierProgress`'s props) — and hands figures to `commissionForRide()`/`tierPositionFor()` (`@rido/pricing`). No arithmetic here, same division `fares/` holds for `quoteFare()`. Powers the driver-facing "you keep $X (Y%)" figure for a ride with no snapshot yet, and the MTD tier-progress card |
 | `src/lib/rides/` | Booking, accept, and completion: `status.ts` (pure `RideStatus`, `canRiderCancel`), `accept.ts` (pure `canAcceptRide`), `start.ts` (pure `canStartTrip`), `cancellation.ts` (pure `cancellationOutcome` — free, chargeable, or too late, ADR-0018), `completion-errors.ts` (pure, `complete-ride`'s HTTP responses → RIDO's voice + retryability), `realtime-event.ts` (pure, channel status → refetch or not), `realtime.ts` (**browser-side**, `subscribeToRide` (ADR-0020) and `subscribeToOpenRequests` (ADR-0021) behind the opaque `RideSubscription` — the one exception to this module being server-only), `server.ts` (`quoteRideRequest`, `requestRide`, `cancelRide`, `quoteCancellation`, `getActiveRide`, `getRecentlyCompletedRide`, `listOpenRequests`, `acceptRide`, `declineRide`, `startTrip` — all service-role writes — and `completeRide`, which calls the deployed `complete-ride` Edge Function instead). Reached from `(rider)/request/actions.ts` and `(driver)/drive/actions.ts`, never imported into a Client Component directly — it carries `import "server-only"` but is not itself `"use server"`. See **Rider/driver** below |
 | `src/lib/drivers/` | Whether the signed-in user IS a driver, and whether they're taking work: `status.ts` (pure, `DriverProfile`, `isActiveDriver`) and `server.ts` (`getOwnDriverProfile`, `setAcceptingRides` — the app's only write to `drivers`, and the only one anywhere that goes through RLS rather than the service role, per ADR-0019's column grant). No `role` column — a driver identity is a matching `drivers` row, checked here rather than in a page |
+| `src/lib/riders/` | Who a rider is, ADR-0022's gap: `server.ts` (`getOwnRiderProfile`, `ensureRiderProfile` — get-or-create, never overwriting a later edit; `setDisplayName`, RLS-scoped like `setAcceptingRides`) against `rider_profiles`. Called from `requestRide()` at booking and `/account` on load, so any rider a driver might carry has a row |
 | `src/lib/marketing/` | Published figures, derived from `@rido/pricing` at build time. Not a vendor boundary — a *derivation* boundary, so no page ever types a rate |
 | `src/lib/supabase/` | Client construction only (`client.ts` browser, `server.ts` server-only). Domain modules consume it; components don't. `client.ts` was dead code until `src/lib/rides/realtime.ts` became its first consumer |
 | `src/types/database.types.ts` | Generated. Regenerate after every migration; never hand-edit |
@@ -82,11 +83,10 @@ for the signed-in `auth_user_id` — check it with `getOwnDriverProfile()` from
 role), so a page shows or hides content per identity; it never forces a choice between them.
 
 `/account` is the one post-login landing page for everyone — deferred deliberately: both `/request`
-and `/drive` are real now, but dropping someone straight into a live map or a dispatch board on
-every sign-in isn't obviously right either. It's role-aware in its *content* (rider card and payment
-card always, driver card if `getOwnDriverProfile()` returns non-null), not in *where login sends
-you*. Both are auth-gated the same way: `requireUser()` in the page is the boundary, `proxy.ts`'s
-`PROTECTED_PREFIXES` is the clean-redirect convenience.
+and `/drive` are real now, but dropping someone into a live map or a dispatch board on every sign-in
+isn't obviously right. Role-aware in *content* (rider, name and payment cards always, driver card if
+`getOwnDriverProfile()` returns non-null), not in *where login sends you*. `requireUser()` in the
+page is the auth boundary; `proxy.ts`'s `PROTECTED_PREFIXES` is the clean-redirect convenience.
 
 **Every `rides` write goes through `src/lib/rides/`, never an RLS write policy** — `authenticated`
 has no `INSERT`/`UPDATE` on the table at all, so both sides write through

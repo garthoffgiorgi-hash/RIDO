@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { CardForm } from "@/components/domain/CardForm";
 import { PlaceSearch } from "@/components/domain/PlaceSearch";
 import { RideMap } from "@/components/domain/RideMap";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Fare, formatCents } from "@/components/ui/Fare";
 import { FareChip } from "@/components/ui/FareChip";
@@ -155,6 +156,8 @@ export function RequestPanel({
       pickupAddress: pickup?.address ?? null,
       dropoffAddress: dropoff?.address ?? null,
       requestedAt: new Date().toISOString(),
+      // A freshly booked ride is always 'requested' — no driver_id exists to have a card yet.
+      driver: null,
     };
   }
 
@@ -285,6 +288,32 @@ export function RequestPanel({
                     ? "You're on your way"
                     : "Looking for a driver"}
               </p>
+
+              {/* The driver card design-system.md's rider blueprint has named since before this
+                  was buildable — displayName is guaranteed non-null on driver_public_profiles
+                  (mirrored from drivers.full_name, itself not-null), so Avatar always gets a real
+                  name here. */}
+              {activeRide.driver && (
+                <div className="flex items-center gap-3 rounded-input border border-mist bg-white p-3">
+                  <Avatar name={activeRide.driver.displayName} size={44} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-ink">
+                      {activeRide.driver.displayName}
+                    </p>
+                    <p className="tabular truncate text-[13px] text-slate">
+                      {[activeRide.driver.vehicleDescription, activeRide.driver.vehiclePlate]
+                        .filter(Boolean)
+                        .join(" · ") || "Vehicle on file"}
+                    </p>
+                  </div>
+                  {activeRide.driver.ratingAverage !== null && (
+                    <p className="tabular shrink-0 text-[13px] font-semibold text-ink">
+                      ★ {activeRide.driver.ratingAverage.toFixed(1)}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-1 text-[14px] text-slate">
                 <p>{activeRide.pickupAddress ?? "Pickup"}</p>
                 <p>{activeRide.dropoffAddress ?? "Dropoff"}</p>

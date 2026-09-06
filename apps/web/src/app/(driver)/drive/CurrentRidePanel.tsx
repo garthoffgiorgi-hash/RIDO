@@ -3,6 +3,7 @@
 import { BPS_DENOMINATOR } from "@rido/pricing";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fare, formatCents } from "@/components/ui/Fare";
@@ -129,8 +130,26 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
     );
   }
 
+  const riderName = ride.rider?.displayName ?? "Your rider";
+
   return (
     <Card className="space-y-3">
+      {/* The mirror of RequestPanel's driver card, and its first real render: who a driver is
+          about to pick up. A null displayName (no name set yet) falls back to "Your rider" rather
+          than rendering nothing — the pickup/dropoff lines below already do the same for a
+          missing address. */}
+      <div className="flex items-center gap-3">
+        <Avatar name={riderName} size={40} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate font-semibold text-ink">{riderName}</p>
+        </div>
+        {ride.rider?.ratingAverage != null && (
+          <p className="tabular shrink-0 text-[13px] font-semibold text-ink">
+            ★ {ride.rider.ratingAverage.toFixed(1)}
+          </p>
+        )}
+      </div>
+
       <div className="space-y-1 text-[14px] text-slate">
         <p className="truncate">{ride.pickupAddress ?? "Pickup"}</p>
         <p className="truncate">{ride.dropoffAddress ?? "Dropoff"}</p>

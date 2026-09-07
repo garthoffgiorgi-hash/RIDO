@@ -55,13 +55,14 @@ export function MarketingFooter() {
       </div>
       <div className="mx-auto mt-9 flex max-w-[1120px] justify-between border-t border-mist px-6 pt-5 sm:px-8">
         <span className="text-[12.5px] text-slate">© 2026 RIDO. {contact.location}.</span>
-        {/* "Terms" stays plain text until /terms ships in its own PR — this one scopes to
-            /privacy only, per the repo's small-separate-PRs convention. */}
         <span className="text-[12.5px] text-slate">
           <a href="/privacy" className="text-slate no-underline hover:text-midnight">
             Privacy
           </a>{" "}
-          · Terms
+          ·{" "}
+          <a href="/terms" className="text-slate no-underline hover:text-midnight">
+            Terms
+          </a>
         </span>
       </div>
     </footer>

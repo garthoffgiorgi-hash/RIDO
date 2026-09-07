@@ -145,6 +145,44 @@ export type Database = {
           },
         ]
       }
+      driver_public_profiles: {
+        Row: {
+          display_name: string
+          driver_id: string
+          rating_count: number
+          rating_sum: number
+          updated_at: string
+          vehicle_description: string | null
+          vehicle_plate: string | null
+        }
+        Insert: {
+          display_name: string
+          driver_id: string
+          rating_count?: number
+          rating_sum?: number
+          updated_at?: string
+          vehicle_description?: string | null
+          vehicle_plate?: string | null
+        }
+        Update: {
+          display_name?: string
+          driver_id?: string
+          rating_count?: number
+          rating_sum?: number
+          updated_at?: string
+          vehicle_description?: string | null
+          vehicle_plate?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_public_profiles_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: true
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       drivers: {
         Row: {
           accepting_rides: boolean
@@ -348,6 +386,47 @@ export type Database = {
           },
         ]
       }
+      ride_ratings: {
+        Row: {
+          comment: string | null
+          created_at: string
+          direction: string
+          id: string
+          ratee_id: string
+          rater_id: string
+          ride_id: string
+          stars: number
+        }
+        Insert: {
+          comment?: string | null
+          created_at?: string
+          direction: string
+          id?: string
+          ratee_id: string
+          rater_id: string
+          ride_id: string
+          stars: number
+        }
+        Update: {
+          comment?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          ratee_id?: string
+          rater_id?: string
+          ride_id?: string
+          stars?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_ratings_ride_id_fkey"
+            columns: ["ride_id"]
+            isOneToOne: false
+            referencedRelation: "rides"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rider_payment_profiles: {
         Row: {
           card_brand: string | null
@@ -380,6 +459,39 @@ export type Database = {
           default_payment_method_id?: string | null
           rider_id?: string
           stripe_customer_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      rider_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          phone: string | null
+          rating_count: number
+          rating_sum: number
+          rider_id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          phone?: string | null
+          rating_count?: number
+          rating_sum?: number
+          rider_id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          phone?: string | null
+          rating_count?: number
+          rating_sum?: number
+          rider_id?: string
           updated_at?: string
         }
         Relationships: []

@@ -13,7 +13,7 @@
 ## Stack
 PostgreSQL via **Supabase** (+ RLS + Edge Functions). Next.js/Vercel frontend, Stripe payments, Mapbox maps. Migrating off Base44.
 
-## Schema — thirteen core tables
+## Schema — fourteen core tables
 
 ### `drivers`
 Identity, vehicle, and compliance state.
@@ -65,6 +65,14 @@ Which open requests a driver has waved off, so the board stops showing them. Why
 **Cascade, not restrict** — this is a preference, not a financial record, so the `rider_payment_profiles` reasoning applies rather than `driver_payouts`'. It's also what keeps an un-decline trivially addable later: deleting a preference row is a normal operation.
 **The composite PK is the whole mechanism.** Driver-first so `where driver_id = ? and ride_id in (…)` is served directly, and it makes a repeated decline `on conflict do nothing` — the same idempotence idiom `queue_driver_payout` uses. There is deliberately **no index on `ride_id` alone**: nothing queries by ride, and the only cascade that would want one fires on ride deletion, which never happens.
 **RLS:** a driver reads their own declines and writes none — the insert goes through the service role, since unlike `accepting_rides` this has plausible future writers that aren't the driver (auto-decline on a dispatch timeout, an admin clearing declines).
+
+### `driver_availability_log`
+The history behind `drivers.accepting_rides`, which is a current-value boolean and answers nothing about the past. Why: ADR-0022 §1's tier 2, and ADR-0019's own recorded gap — an availability claim that "has no reader today."
+`id` (PK) · `driver_id` → drivers, **restrict** · `accepting_rides` (the state *after* the change) · `changed_at`. Index on (`driver_id`, `changed_at`).
+**Restrict, not `ride_declines`' cascade** — for a compliance reason, not a financial one: `../compliance/ca-tnc.md` defines Period 1 as "app on, no ride accepted", and this log is the only record that a driver was ever in it. No `rides` row can evidence that, by definition. It deepens the deletion-vs-restrict gap ADR-0022 §6 named on the rider side.
+**Written only by `log_driver_availability()`**, never by the app. `authenticated` holds `update (accepting_rides) on drivers`, so a driver can flip the flag straight through PostgREST without passing through `setAcceptingRides()` — a log of a column that isn't app-mediated has to be written by the database or it isn't a log. One row per driver is backfilled at creation so the log has a floor rather than a gap.
+**Caveat, stated rather than discovered:** a `drivers` row is created `status = 'pending'` with `accepting_rides` defaulting true, so this records availability for a driver who cannot yet accept anything. That is faithful — it gives *that column* a history, not an answer to "could they have worked", which additionally needs a history of `drivers.status` (unbuilt, ADR-0022 tier 3).
+**RLS:** read own, write none — no `INSERT`/`UPDATE`/`DELETE` grant to `authenticated` anywhere. `IN (subquery)` is correct in this policy and `exists` would be cargo-culting: the nullable-column trap `20260830120000` documents applies to `rides.driver_id`, and this `driver_id` is `not null`.
 
 ### `commission_tiers`
 Config — the graduated rates, editable without deploy.
@@ -127,6 +135,14 @@ a live `authenticated` grant that would otherwise run this as the driver's own r
 rater/ratee pair matches its own rider and driver. `bump_rating_aggregate()` — rolls a new rating
 into the ratee's `rating_count`/`rating_sum` on `driver_public_profiles` or `rider_profiles`.
 
+`log_driver_availability()` — appends to `driver_availability_log` on a driver's creation and on
+every real change to `accepting_rides`; `SECURITY DEFINER` for `sync_driver_public_profile()`'s
+reason, and here the failure mode is louder — under invoker security the Online/Offline toggle
+throws for every driver. `driver_online_seconds(driver_id, from, to)` — the reader that makes
+"hours online" answerable, clamped at both ends of the window. Deliberately `SECURITY INVOKER`:
+the log's own RLS is the entire access check, so a driver asking about someone else gets `0` and
+there is no ownership test to forget.
+
 ## Not built, in this pass or any prior one
 
 The CPUC 0.33% fee and airport surcharges (`../compliance/ca-tnc.md` calls both out as needing
@@ -140,6 +156,13 @@ An adjustment-row table is **half-answered**: `driver_payouts.ride_id` is nullab
 correction or a Prop 22 top-up has somewhere to be written without editing a settled row, which is
 what `ride-completion.md`'s "a correction is a new row, not an edit" asks for. Nothing creates one
 yet, and adjustments to the *commission* side still have no home.
+
+**Driver cohort/tenure needs no schema, and that is the decision** — ADR-0022 §1 listed it, and the
+answer is that both readings are already derivable: signup cohort is `rido_year_month(drivers.created_at)`
+joined to `driver_monthly_stats.year_month`; first-earning cohort is `min(year_month)` per driver over
+the rollup itself. A stored `cohort_year_month` would be a second copy of a fact that already has a
+home, written once and free to drift — the same argument `ride_charges` makes for having no `kind`
+column, and `../CLAUDE.md`'s "one fact, one home" generally.
 
 ## The completion flow
 

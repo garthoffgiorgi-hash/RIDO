@@ -4,8 +4,9 @@ Migrations are the **only** source of truth for schema. Never change the databas
 never edit a migration that has been applied — add a new one.
 
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
-`ride_charges` · `rider_payment_profiles` · `ride_declines` · `commission_tiers` ·
-`fare_rate_cards` · `rider_profiles` · `driver_public_profiles` · `ride_ratings`. Field-level
+`ride_charges` · `rider_payment_profiles` · `ride_declines` · `driver_availability_log` ·
+`commission_tiers` · `fare_rate_cards` · `rider_profiles` · `driver_public_profiles` ·
+`ride_ratings`. Field-level
 detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-completion.md` ·
 `docs/architecture/payouts.md` · `docs/architecture/rider-charging.md`.
 
@@ -157,9 +158,10 @@ detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-comple
   id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
   conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
   minutes) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` after migrations — **one run behind again**: `rider_profiles`,
-  `driver_public_profiles`, `ride_ratings` (ADR-0022) postdate it, the gap `ride_declines` once
-  left. `apps/web/src/lib/riders/server.ts` bridges it with the same narrow `UntypedTables` hatch.
+- Regenerate `database.types.ts` after migrations. It now covers ADR-0022's three tables; what is
+  left over is the `UntypedTables` hatch in `apps/web/src/lib/riders/server.ts` and
+  `apps/web/src/lib/rides/server.ts`, retirable as PR #41 retired the last pair.
+  `driver_availability_log` needs no bridge — nothing in `apps/web` reads it.
   `npm run types:generate` needs Docker, else `--project-id <ref>`; `>` truncates the file first.
 
 ## Tests (`supabase/tests/`, pgTAP)
@@ -193,7 +195,5 @@ by luck — even though accept needs no lock of its own to get there (ADR-0013).
 `settle()` calls racing one payout, asserting the loser blocks and gets `null`, never a second
 attempt number. Run these manually against a real instance; none is part of `test db`.
 
-**`concurrent-apply-ride-commission.sh` is retired** — `rides_one_active_per_driver` (ADR-0013)
-makes its two-rides-one-driver setup illegal through any real code path. `reserve_driver_month()`'s
-lock stays regardless, becoming load-bearing again if that constraint ever relaxes (driver ride
-queuing, say). Full account: `docs/architecture/ride-completion.md`.
+**`concurrent-apply-ride-commission.sh` is retired** — its setup is now illegal, though
+`reserve_driver_month()`'s lock stays. Full account: `docs/architecture/ride-completion.md`.

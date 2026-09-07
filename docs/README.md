@@ -30,6 +30,7 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Who may accept a ride, the open-pool RLS policy, why no lock/CAS is needed | `decisions/0013-driver-accepts-one-row-one-update.md` |
 | Why the app forwards the driver's JWT to `complete-ride` rather than re-orchestrating it, `started_at`/`duration_seconds` | `decisions/0014-app-calls-complete-ride.md` |
 | A driver's online/offline state, declining a request, and which columns a driver may write about themselves | `decisions/0019-driver-controls-their-own-queue.md` |
+| A driver's availability *history*, hours online, and which insurance period applied when | `architecture/data-model.md` (`driver_availability_log`) |
 | How a driver gets paid: the ledger, per-ride transfers, Connect onboarding | `architecture/payouts.md` |
 | Why a payout retry needs its own attempt claim, not just a stable idempotency key | `decisions/0016-payout-attempt-claim.md` |
 | How a rider is charged: the hold, the capture, saved cards, cancellation fees | `architecture/rider-charging.md` |
@@ -70,6 +71,7 @@ docs/
 | 1 | Commercial TNC insurance quote — fixed monthly minimum or per-ride rate? | The entire financial model | Broker |
 | 2 | Prop 22 earnings floor — who owes what, and how the two-week aggregate lands? ("drivers set fares" is resolved: they don't — ADR-0009) | Driver classification, payout design | CA attorney |
 | 5 | Should RIDO keep a share of the cancellation fee as a platform fee? Today the driver keeps 100% (ADR-0018) — but RIDO absorbs Stripe's processing on every authorization, and this is the obvious place to recover it | Cancellation economics; whether `rides_commission_present_iff_completed` has to bend | Giorgi |
+| 6 | What *is* "ride density", and what value of it turns the flat fee on? ADR-0003 gates the turn-on on it and deliberately never defined it — "never a date in code" cuts both ways, since an undefined signal is not a signal either. `driver_online_seconds()` now supplies the utilization denominator; the numerator and the threshold are a market call | Whether the pilot can ever end | Giorgi |
 
 Answering one of these produces an ADR. Until then it stays here, visible.
 

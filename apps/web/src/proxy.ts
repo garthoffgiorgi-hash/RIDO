@@ -22,6 +22,10 @@ import { NextResponse, type NextRequest } from "next/server";
  * here still redirects, just one render later. The list exists because a page-level `redirect()`
  * sitting behind `loading.tsx` streams as a 200 plus a client-side navigation; catching it here
  * keeps protected routes a clean HTTP redirect.
+ *
+ * The bounce carries `?next=<original path>` through `/login`, which `safeNext()` re-validates
+ * before honouring — this file only ever writes a same-origin path here, but the value still
+ * round-trips through a query string a person could edit by hand.
  */
 const PROTECTED_PREFIXES = ["/account", "/drive", "/dev", "/request"] as const;
 
@@ -60,6 +64,7 @@ export async function proxy(request: NextRequest) {
 
   if (!user && isProtected(request.nextUrl.pathname)) {
     const login = new URL("/login", request.url);
+    login.searchParams.set("next", request.nextUrl.pathname + request.nextUrl.search);
     return NextResponse.redirect(login);
   }
 

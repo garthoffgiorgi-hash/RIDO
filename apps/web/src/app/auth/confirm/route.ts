@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { completeEmailLink, type EmailLinkType } from "@/lib/auth/server";
+import { safeNext } from "@/lib/auth/next-param";
 
 /**
  * Where every emailed auth link lands. Supabase's own templates must be pointed here — their
@@ -20,14 +21,4 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.redirect(`${origin}${safeNext(searchParams.get("next"))}`);
-}
-
-/**
- * `next` is attacker-controllable — it arrives in a URL anyone can craft and send. Only
- * same-origin relative paths are honoured, so a verified session can't be bounced off-site.
- * A leading `//` is rejected because browsers read it as protocol-relative and absolute.
- */
-function safeNext(requested: string | null): string {
-  if (!requested) return "/account";
-  return requested.startsWith("/") && !requested.startsWith("//") ? requested : "/account";
 }

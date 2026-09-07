@@ -3,6 +3,7 @@
 import { requireUser } from "@/lib/auth/server";
 import type { Coordinates, Place } from "@/lib/maps/types";
 import * as payments from "@/lib/payments/server";
+import * as ratings from "@/lib/ratings/server";
 import * as rides from "@/lib/rides/server";
 
 /**
@@ -39,6 +40,16 @@ export async function startCardSetup() {
 
 export async function saveCard(setupIntentId: string) {
   return payments.recordCardFromSetup(setupIntentId);
+}
+
+/** Whether the rider has already rated this completed ride's driver — `RatingPrompt`'s mount check. */
+export async function getRatingStatus(rideId: string) {
+  return ratings.getRatingStatus(rideId);
+}
+
+/** Submits the rider's rating of the driver on a completed ride. */
+export async function submitRating(rideId: string, stars: number, comment: string | null) {
+  return ratings.submitRating(rideId, stars, comment);
 }
 
 /** What `RequestPanel` shows about the rider's own ride — both halves, in one round trip. */

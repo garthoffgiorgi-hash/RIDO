@@ -42,7 +42,10 @@ never by widening the policy.
 vehicle, rating — the moment one accepts; a driver's current-ride card shows the rider's name the
 same way. Both are scoped to the live ride they share and vanish the instant it ends, through the
 schema's first cross-party RLS policies. Signup now asks a name — the fact nothing in RIDO had ever
-collected — and two-directional ratings close `rate`, the last unbuilt state in the rider blueprint.
+collected. Two-directional ratings close `rate`, the last unbuilt state in the rider blueprint: a
+star picker in the rider's trip-complete summary and the driver's post-completion card
+(`RatingPrompt`, `src/lib/ratings/`), writing through the service role against `ride_ratings` —
+whose schema, triggers and RLS ADR-0022 already shipped, ahead of the UI that now writes to it.
 
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
 whole pilot), the native driver app, and dispatch/proximity matching. Neither blocks the business

@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth/server";
 import * as drivers from "@/lib/drivers/server";
 import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
+import * as ratings from "@/lib/ratings/server";
 import * as rides from "@/lib/rides/server";
 
 /**
@@ -89,6 +90,16 @@ export async function startConnectOnboarding() {
 
 export async function retryPayout(payoutId: string) {
   return payouts.retryPayout(payoutId);
+}
+
+/** Whether the driver has already rated this completed ride's rider — `RatingPrompt`'s mount check. */
+export async function getRatingStatus(rideId: string) {
+  return ratings.getRatingStatus(rideId);
+}
+
+/** Submits the driver's rating of the rider on a completed ride. */
+export async function submitRating(rideId: string, stars: number, comment: string | null) {
+  return ratings.submitRating(rideId, stars, comment);
 }
 
 /**

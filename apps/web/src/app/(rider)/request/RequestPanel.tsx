@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CardForm } from "@/components/domain/CardForm";
 import { PlaceSearch } from "@/components/domain/PlaceSearch";
+import { RatingPrompt } from "@/components/domain/RatingPrompt";
 import { RideMap } from "@/components/domain/RideMap";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -19,12 +20,14 @@ import { subscribeToRide } from "@/lib/rides/realtime";
 import type { ActiveRide, CompletedRideSummary, RideQuote } from "@/lib/rides/server";
 import {
   cancelRide,
+  getRatingStatus,
   quoteCancellation,
   quoteRideRequest,
   readRiderRideState,
   requestRide,
   saveCard,
   startCardSetup,
+  submitRating,
 } from "./actions";
 
 const formatEta = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min away`;
@@ -370,6 +373,12 @@ export function RequestPanel({
                 <p>{recentlyCompleted.dropoffAddress ?? "Dropoff"}</p>
               </div>
               <Fare cents={recentlyCompleted.fareCents} />
+              <RatingPrompt
+                rideId={recentlyCompleted.id}
+                ratee="driver"
+                getStatus={getRatingStatus}
+                submit={submitRating}
+              />
               <Button
                 variant="primary"
                 size="lg"

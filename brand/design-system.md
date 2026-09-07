@@ -121,8 +121,9 @@ card** the blueprint named — `Avatar`, name, vehicle, rating, live only for th
 and now *in trip* too ("You're on your way," once the driver starts). A trip-complete summary (fare
 paid, dismissable back to booking) closes the loop once the ride finishes. **Every one of those
 transitions is now live** (ADR-0020): the sheet moves on its own, with no spinner and no connection
-state — the copy simply changes. **`rate` is built too** — two-directional `ride_ratings`, written
-through `/account` and a driver's post-completion flow, not yet a dedicated on-sheet prompt.
+state — the copy simply changes. **`rate` is built too** — a star picker and optional comment
+(`RatingPrompt`) right on the trip-complete summary above, writing two-directional `ride_ratings`
+through the service role; the driver's own copy of it sits in their post-completion card below.
 `arrived` (a driver-facing "I'm here" action) is what's left. `"Get a rido"` keeps its name through
 every state per section 5 — a changed price never becomes a relabeled button.
 

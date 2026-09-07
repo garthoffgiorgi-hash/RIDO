@@ -3,13 +3,20 @@
 import { BPS_DENOMINATOR } from "@rido/pricing";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { RatingPrompt } from "@/components/domain/RatingPrompt";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fare, formatCents } from "@/components/ui/Fare";
 import { subscribeToRide } from "@/lib/rides/realtime";
 import type { DriverActiveRide, RideCompletion } from "@/lib/rides/server";
-import { completeRide, readDriverActiveRide, startTrip } from "./actions";
+import {
+  completeRide,
+  getRatingStatus,
+  readDriverActiveRide,
+  startTrip,
+  submitRating,
+} from "./actions";
 
 const formatKeepPct = (commissionRateBps: number) =>
   new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 }).format(
@@ -103,6 +110,12 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
             {formatCents(completion.fareCents)}
           </p>
         </div>
+        <RatingPrompt
+          rideId={completion.rideId}
+          ratee="rider"
+          getStatus={getRatingStatus}
+          submit={submitRating}
+        />
         <Button variant="secondary" size="lg" fullWidth onClick={() => router.refresh()}>
           Find more rides
         </Button>

@@ -82,11 +82,11 @@ for the signed-in `auth_user_id` — check it with `getOwnDriverProfile()` from
 (there's no self-serve "become a driver" flow — the only route in is admin/vetting under the service
 role), so a page shows or hides content per identity; it never forces a choice between them.
 
-`/account` is the one post-login landing page for everyone — deferred deliberately: both `/request`
-and `/drive` are real now, but dropping someone into a live map or a dispatch board on every sign-in
-isn't obviously right. Role-aware in *content* (rider, name and payment cards always, driver card if
-`getOwnDriverProfile()` returns non-null), not in *where login sends you*. `requireUser()` in the
-page is the auth boundary; `proxy.ts`'s `PROTECTED_PREFIXES` is the clean-redirect convenience.
+`/account` is still role-aware only in *content* (rider, name and payment cards always, driver card
+if `getOwnDriverProfile()` returns non-null) — never in where a signed-in person ends up. Where
+sign-in lands is a separate decision, `/auth/landing` (ADR-0023): a live ride wins outright, else
+`/account`. `requireUser()` in each page is the auth boundary; `proxy.ts`'s `PROTECTED_PREFIXES` is
+the clean-redirect convenience.
 
 **Every `rides` write goes through `src/lib/rides/`, never an RLS write policy** — `authenticated`
 has no `INSERT`/`UPDATE` on the table at all, so both sides write through

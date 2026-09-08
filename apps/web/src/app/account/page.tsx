@@ -17,9 +17,10 @@ import { RiderNameCard } from "./RiderNameCard";
  * both at once, so this page shows whichever is true rather than forcing a choice — it doubles
  * as the chooser.
  *
- * Post-login redirect still lands everyone here rather than splitting by role at the proxy
- * layer: neither `/request` nor `/drive` has real functionality yet, so there's nowhere more
- * specific to send anyone. That split is worth revisiting once one of them does.
+ * Still the default sign-in destination, but no longer the only one: `/auth/landing` (ADR-0023)
+ * sends someone with a live ride straight to `/request` or `/drive` instead, and lands here only
+ * when nothing is happening — the ride check answers "isn't obviously right" without splitting by
+ * identity, which this page still never does either.
  *
  * Also still proves the session is readable from a Server Component — if this renders an email,
  * the whole cookie chain (proxy refresh -> server client -> RLS-scoped query) is working.

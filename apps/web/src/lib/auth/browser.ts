@@ -21,8 +21,13 @@ import { toE164 } from "@/lib/phone";
 import { authErrorMessage } from "./errors";
 import { type AuthResult, failed, succeeded } from "./result";
 
-/** Where a verified email link should land. Relative, same-origin — `/auth/confirm` enforces it. */
-const DEFAULT_NEXT = "/account";
+/**
+ * Where a verified email link lands absent an explicit `next` — the post-login landing rule
+ * (ADR-0023), not a fixed page, so a signup email confirmed on one device still resolves
+ * against whatever is actually live for that account rather than always /account. Relative,
+ * same-origin — `/auth/confirm` enforces it.
+ */
+const DEFAULT_NEXT = "/auth/landing";
 
 const NOT_A_PHONE = "That doesn't look like a phone number. Include the area code.";
 

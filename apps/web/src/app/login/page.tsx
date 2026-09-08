@@ -1,15 +1,17 @@
 "use client";
 
 // Shared rider/driver login. Not placed in (rider)/ or (driver)/ since the same flow serves
-// both — revisit if that stops being true. Destination after signing in is `next` when the
-// visitor was bounced here from somewhere specific (proxy.ts), else /account — see next-param.ts.
+// both — revisit if that stops being true. Destination after signing in is /auth/landing, which
+// decides the real landing page (ADR-0023) — `next` here is only forwarded to it when
+// PROTECTED_PREFIXES's bounce (proxy.ts) or a cross-link said this visitor was headed somewhere
+// specific; see next-param.ts.
 //
 // This file owns presentation and form state only. Every auth operation goes through
 // @/lib/auth/browser, which is where "sign-in never creates an account" is enforced.
 
 import { Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useState } from "react";
 import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
@@ -23,7 +25,7 @@ import {
   signInWithPassword,
   verifyPhoneCode,
 } from "@/lib/auth/browser";
-import { safeNext } from "@/lib/auth/next-param";
+import { validNext } from "@/lib/auth/next-param";
 import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Mode = "password" | "email-link" | "phone";
@@ -50,14 +52,17 @@ export default function LoginPage() {
 }
 
 function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const linkError = LINK_ERRORS[searchParams.get("error") ?? ""] ?? null;
   // Where PROTECTED_PREFIXES's anonymous bounce (proxy.ts) said this visitor was headed, so
-  // signing in returns them there instead of always /account. Sanitised here, not trusted from
-  // the URL — see next-param.ts's own header for exactly what that guards against.
-  const next = safeNext(searchParams.get("next"));
-  const nextQuery = searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
+  // signing in returns them there instead of whatever /auth/landing would otherwise decide from
+  // what's actually live right now (ADR-0023). `validNext`, not `safeNext` — `null` here has to
+  // stay distinguishable from an explicit "/account", or every sign-in with nothing requested
+  // would short-circuit the landing rule's own ride check by forwarding a fallback that looks
+  // exactly like a real answer. Sanitised either way, not trusted from the URL — see
+  // next-param.ts's own header for exactly what that guards against.
+  const explicitNext = validNext(searchParams.get("next"));
+  const nextQuery = explicitNext ? `?next=${encodeURIComponent(explicitNext)}` : "";
 
   const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
@@ -85,9 +90,13 @@ function LoginForm() {
     setCode("");
   }
 
+  // A full document navigation, not router.push(): /auth/landing is a Route Handler, which
+  // returns a real redirect with no RSC flight payload — router.push() would fall onto an
+  // undocumented non-flight path. This also makes router.refresh() unnecessary (a document load
+  // discards the router cache on its own) and fixes a pre-existing wart where Back after signing
+  // in showed the login form again, since replace() doesn't leave /login in history.
   function goToDestination() {
-    router.push(next);
-    router.refresh();
+    window.location.replace(`/auth/landing${nextQuery}`);
   }
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
@@ -107,7 +116,7 @@ function LoginForm() {
     }
 
     if (mode === "email-link") {
-      const result = await sendSignInLink(email, next);
+      const result = await sendSignInLink(email, explicitNext ?? undefined);
       if (!result.ok) setError(result.message);
       else setEmailLinkSent(true);
       setLoading(false);

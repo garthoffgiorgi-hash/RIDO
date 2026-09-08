@@ -224,9 +224,17 @@ export async function requestRide(
   const policy = await getPaymentPolicy(MARKET);
   if (!policy.ok) return { kind: "failed", message: policy.message };
 
-  const payload: Database["public"]["Tables"]["rides"]["Insert"] = {
+  // `& { market: string }`, not a blanket `as` cast on the whole payload: `market` predates the
+  // generated types the same way rider_profiles/driver_public_profiles/ride_ratings did after
+  // ADR-0022 (apps/web/CLAUDE.md), and this narrows the escape to that one field so a genuine typo
+  // anywhere else in the object is still caught. A blanket `{...} as Insert` was tried and rejected
+  // here — TypeScript's excess-property check never runs on a type-asserted object literal, so it
+  // silently accepted a nonsense field, not only market. Delete the intersection once
+  // `npm run types:generate` runs against this migration.
+  const payload: Database["public"]["Tables"]["rides"]["Insert"] & { market: string } = {
     rider_id: user.id,
     driver_id: null,
+    market: MARKET,
     fare_cents: quote.data.fareCents,
     // The end of a journey to nowhere: `riderTotalCents` has been computed by `quoteFare()` and
     // carried through `RideQuote` since ADR-0009, and discarded at this exact line until ADR-0017.
@@ -234,10 +242,18 @@ export async function requestRide(
     rider_total_cents: quote.data.riderTotalCents,
     pickup_address: pickup.address,
     dropoff_address: dropoff.address,
-  } as Database["public"]["Tables"]["rides"]["Insert"];
+  };
 
   const service = createServiceRoleClient();
-  const { data, error } = await service.from("rides").insert(payload).select("id").single();
+  const { data, error } = await service
+    .from("rides")
+    // Cast here, not on `payload` itself: `.insert()` carries its own excess-property check
+    // (Supabase's `RejectExcessProperties`), stricter than a plain structural assignment, and it
+    // rejects `market` before regeneration regardless of how `payload` is typed above. Casting
+    // only this argument keeps that upstream declaration — and its typo protection — intact.
+    .insert(payload as Database["public"]["Tables"]["rides"]["Insert"])
+    .select("id")
+    .single();
 
   if (error) {
     // 23505 is rides_one_active_per_rider — the expected, named conflict. Anything else is not.

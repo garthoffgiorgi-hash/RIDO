@@ -10,11 +10,17 @@
 //   Phone — number only, then a 6-digit SMS code. Passwordless: the code is the credential.
 //
 // Presentation and form state only. Auth operations live in @/lib/auth/browser.
+//
+// `next` is only ever read here to complete a verify redirect and to carry intent across the
+// login<->signup cross-link — the confirmation email itself still always points at /account
+// (signUpWithEmail/resendEmailSignUpCode don't take a `next`, unlike sendSignInLink). A known,
+// narrow gap, not an oversight: this page creates accounts, so what a brand-new signup was
+// originally trying to reach matters less than for login/page.tsx returning a signed-in visitor.
 
 import { Loader2, MailCheck, MessageSquare } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { type FormEvent, Suspense, useState } from "react";
 import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -28,6 +34,7 @@ import {
   verifyEmailCode,
   verifyPhoneCode,
 } from "@/lib/auth/browser";
+import { safeNext } from "@/lib/auth/next-param";
 import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Method = "email" | "phone";
@@ -39,7 +46,20 @@ const METHODS = [
 ] as const satisfies readonly { value: Method; label: string }[];
 
 export default function SignUpPage() {
+  return (
+    // useSearchParams needs a Suspense boundary to avoid opting the whole route into
+    // client-side rendering — same reason login/page.tsx wraps its form.
+    <Suspense>
+      <SignUpForm />
+    </Suspense>
+  );
+}
+
+function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const next = safeNext(searchParams.get("next"));
+  const nextQuery = searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
   const [method, setMethod] = useState<Method>("email");
   const [step, setStep] = useState<Step>("credentials");
   const [name, setName] = useState("");
@@ -58,8 +78,8 @@ export default function SignUpPage() {
     setNotice(null);
   }
 
-  function switchMethod(next: Method) {
-    setMethod(next);
+  function switchMethod(nextMethod: Method) {
+    setMethod(nextMethod);
     setStep("credentials");
     resetFeedback();
     setCode("");
@@ -105,7 +125,7 @@ export default function SignUpPage() {
       return;
     }
 
-    router.push("/account");
+    router.push(next);
     router.refresh();
   }
 
@@ -305,7 +325,7 @@ export default function SignUpPage() {
         <p className="mt-6 text-center text-sm text-slate">
           Already have an account?{" "}
           <Link
-            href="/login"
+            href={`/login${nextQuery}`}
             className="font-semibold text-signal no-underline hover:text-midnight"
           >
             Log in

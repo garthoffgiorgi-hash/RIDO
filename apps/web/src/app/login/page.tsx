@@ -1,9 +1,8 @@
 "use client";
 
 // Shared rider/driver login. Not placed in (rider)/ or (driver)/ since the same flow serves
-// both — revisit if that stops being true. Post-login destination is /account for both roles
-// for now — split rider/driver once there's a way to tell them apart (a `role` on the driver
-// row, most likely) rather than guessing here.
+// both — revisit if that stops being true. Destination after signing in is `next` when the
+// visitor was bounced here from somewhere specific (proxy.ts), else /account — see next-param.ts.
 //
 // This file owns presentation and form state only. Every auth operation goes through
 // @/lib/auth/browser, which is where "sign-in never creates an account" is enforced.
@@ -24,6 +23,7 @@ import {
   signInWithPassword,
   verifyPhoneCode,
 } from "@/lib/auth/browser";
+import { safeNext } from "@/lib/auth/next-param";
 import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Mode = "password" | "email-link" | "phone";
@@ -53,6 +53,11 @@ function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const linkError = LINK_ERRORS[searchParams.get("error") ?? ""] ?? null;
+  // Where PROTECTED_PREFIXES's anonymous bounce (proxy.ts) said this visitor was headed, so
+  // signing in returns them there instead of always /account. Sanitised here, not trusted from
+  // the URL — see next-param.ts's own header for exactly what that guards against.
+  const next = safeNext(searchParams.get("next"));
+  const nextQuery = searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
 
   const [mode, setMode] = useState<Mode>("password");
   const [email, setEmail] = useState("");
@@ -72,16 +77,16 @@ function LoginForm() {
     setNotice(null);
   }
 
-  function switchMode(next: Mode) {
-    setMode(next);
+  function switchMode(nextMode: Mode) {
+    setMode(nextMode);
     resetFeedback();
     setEmailLinkSent(false);
     setCodeSentTo(null);
     setCode("");
   }
 
-  function goToAccount() {
-    router.push("/account");
+  function goToDestination() {
+    router.push(next);
     router.refresh();
   }
 
@@ -97,12 +102,12 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      goToAccount();
+      goToDestination();
       return;
     }
 
     if (mode === "email-link") {
-      const result = await sendSignInLink(email);
+      const result = await sendSignInLink(email, next);
       if (!result.ok) setError(result.message);
       else setEmailLinkSent(true);
       setLoading(false);
@@ -127,7 +132,7 @@ function LoginForm() {
       setLoading(false);
       return;
     }
-    goToAccount();
+    goToDestination();
   }
 
   async function handleResendCode() {
@@ -309,7 +314,7 @@ function LoginForm() {
         <p className="mt-6 text-center text-sm text-slate">
           New to rido?{" "}
           <Link
-            href="/signup"
+            href={`/signup${nextQuery}`}
             className="font-semibold text-signal no-underline hover:text-midnight"
           >
             Create an account

@@ -357,6 +357,26 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
   };
 }
 
+/**
+ * Whether the signed-in rider has a live ride right now — the post-login landing rule's only
+ * question, so it reads only `id` rather than everything `getActiveRide` assembles for rendering
+ * (a driver card included). `rides_one_active_per_rider` guarantees at most one row.
+ */
+export async function hasActiveRiderRide(user: User): Promise<boolean> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("rides")
+    .select("id")
+    .eq("rider_id", user.id)
+    .in("status", ACTIVE_STATUSES)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`hasActiveRiderRide: could not check for an active ride — ${error.message}`);
+  }
+  return data !== null;
+}
+
 /** What a cancellation cost the rider, so the caller can say so honestly. */
 export interface CancellationResult {
   readonly feeChargedCents: number;
@@ -758,6 +778,33 @@ export async function getDriverActiveRide(
       rider: await readRiderCard(supabase, ride.rider_id),
     },
   };
+}
+
+/**
+ * Whether the signed-in driver has a live ride right now — the post-login landing rule's only
+ * question, so it reads only `id` rather than `getDriverActiveRide`'s full assembly (which prices
+ * the ride live via `commissionForRide` against month-to-date, a cost this doesn't need to pay).
+ *
+ * **The `.eq("driver_id", ...)` filter is load-bearing, not decorative.** A status-only read would
+ * still be scoped correctly here in practice — `rides_select_open_requests_as_active_driver` only
+ * ever exposes `status = 'requested'` rows, and this checks `'accepted'`/`'in_progress'` — but
+ * dropping the filter would silently stop being safe the moment either policy or this status list
+ * changes, so it stays explicit rather than relying on that coincidence. `rides_one_active_per_driver`
+ * guarantees at most one row.
+ */
+export async function hasActiveDriverRide(driver: DriverProfile): Promise<boolean> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase
+    .from("rides")
+    .select("id")
+    .eq("driver_id", driver.id)
+    .in("status", ["accepted", "in_progress"])
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`hasActiveDriverRide: could not check for an active ride — ${error.message}`);
+  }
+  return data !== null;
 }
 
 /**

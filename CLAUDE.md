@@ -47,18 +47,17 @@ star picker in the rider's trip-complete summary and the driver's post-completio
 (`RatingPrompt`, `src/lib/ratings/`), writing through the service role against `ride_ratings` —
 whose schema, triggers and RLS ADR-0022 already shipped, ahead of the UI that now writes to it.
 
+**A sign-in lands where the ride is now** (ADR-0023). `/account` shows a rider card to everyone and
+a driver card to anyone with a `drivers` row (no `role` column — the row's existence *is* the
+identity, and a person can hold both) — that never changes. But `/account` is no longer the only
+place sign-in ever lands: `/auth/landing` sends someone with a live ride straight to `/request` or
+`/drive` instead, a fact about what they're doing rather than a guess about which identity they
+favour, and falls back to `/account` for everyone else, unchanged from before.
+
 **Not built:** flat-fee subscription billing (deliberate — ADR-0003 puts the fee at $0 for the
 whole pilot), the native driver app, and dispatch/proximity matching. Neither blocks the business
 model the way an empty platform balance did; they're the day-to-day usability gaps left once the
 money itself moves correctly both ways.
-
-**Partially built:**
-
-- **The rider/driver distinction.** `/account` shows a rider card to everyone and a driver card to
-  anyone with a `drivers` row (no `role` column — the row's existence *is* the identity, and a
-  person can hold both). Post-login redirect still always lands on `/account` — both `/request`
-  and `/drive` have real functionality now, but landing a rider straight into a live map, or a
-  driver straight into a dispatch board, on every sign-in isn't obviously right either.
 
 `docs/roadmap.md` is the dated, verified version of this. If either disagrees with the
 filesystem, **the filesystem wins** — fix it in the same commit that proves it wrong.

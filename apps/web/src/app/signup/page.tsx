@@ -19,7 +19,7 @@
 
 import { Loader2, MailCheck, MessageSquare } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useState } from "react";
 import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +34,7 @@ import {
   verifyEmailCode,
   verifyPhoneCode,
 } from "@/lib/auth/browser";
-import { safeNext } from "@/lib/auth/next-param";
+import { validNext } from "@/lib/auth/next-param";
 import { formatPhoneForDisplay } from "@/lib/phone";
 
 type Method = "email" | "phone";
@@ -56,10 +56,13 @@ export default function SignUpPage() {
 }
 
 function SignUpForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const next = safeNext(searchParams.get("next"));
-  const nextQuery = searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
+  // `validNext`, not `safeNext`: `null` has to stay distinguishable from an explicit "/account",
+  // or a signup with nothing requested (the common case) would forward a fallback that looks like
+  // a real answer and short-circuit /auth/landing's own ride check (ADR-0023) — same trap
+  // login/page.tsx's identical variable avoids, for the identical reason.
+  const explicitNext = validNext(searchParams.get("next"));
+  const nextQuery = explicitNext ? `?next=${encodeURIComponent(explicitNext)}` : "";
   const [method, setMethod] = useState<Method>("email");
   const [step, setStep] = useState<Step>("credentials");
   const [name, setName] = useState("");
@@ -125,8 +128,10 @@ function SignUpForm() {
       return;
     }
 
-    router.push(next);
-    router.refresh();
+    // A full document navigation, not router.push() — see login/page.tsx's goToDestination()
+    // for why: /auth/landing is a Route Handler, and this also drops the account straight into
+    // the same landing-rule decision a returning sign-in gets, rather than always /account.
+    window.location.replace(`/auth/landing${nextQuery}`);
   }
 
   async function handleResend() {

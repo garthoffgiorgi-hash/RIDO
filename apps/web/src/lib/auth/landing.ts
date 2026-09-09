@@ -23,3 +23,34 @@ export function landingPath(signals: LandingSignals): string {
   if (signals.hasRiderRide) return "/request";
   return "/account";
 }
+
+/** Just the two facts the ride check supplies — `explicitNext` comes from the URL, not a read. */
+export type RideSignals = Omit<LandingSignals, "explicitNext">;
+
+const NO_RIDES: RideSignals = { hasDriverRide: false, hasRiderRide: false };
+
+/**
+ * Runs the ride check, degrading to "no live ride" if it fails for any reason.
+ *
+ * **This is a guard on the critical path for every sign-in, not defensive habit.** The reads it
+ * wraps (`getOwnDriverProfile`, `hasActiveDriverRide`, `hasActiveRiderRide`) all throw on a
+ * Supabase error, and their only caller is a **Route Handler** — which `app/error.tsx` does not
+ * cover, because that boundary catches errors thrown while *rendering* a route. Unguarded, a
+ * transient database blip during sign-in is a raw, unbranded 500 with no way forward, for every
+ * user, on the one request they cannot avoid making.
+ *
+ * Degrading to `/account` is the correct answer rather than a consolation prize: the landing rule
+ * is an optimization over where sign-in used to send everyone unconditionally, so losing it costs
+ * a tap, not correctness. An explicit `next` is unaffected — it never depended on this read, and
+ * `landingPath` still honours it on the degraded path.
+ *
+ * Takes the read as an argument so the degrade is testable without a database.
+ */
+export async function rideSignalsOrNone(read: () => Promise<RideSignals>): Promise<RideSignals> {
+  try {
+    return await read();
+  } catch (cause) {
+    console.error("auth/landing: ride check failed, falling back to /account", { cause });
+    return NO_RIDES;
+  }
+}

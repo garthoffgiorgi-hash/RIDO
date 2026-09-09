@@ -4,7 +4,7 @@
 describes fact. **If it disagrees with the filesystem, the filesystem wins — fix this file in the
 same commit that proves it wrong.***
 
-**Last verified: 2026-09-08** (branch `claude/intelligent-fermat-2xkydc`) — every count in this file
+**Last verified: 2026-09-09** (branch `claude/intelligent-fermat-2xkydc`) — every count in this file
 re-checked against the filesystem and a Postgres rebuilt from `supabase/migrations/`.
 
 ## TL;DR
@@ -41,7 +41,7 @@ instant.
 |---|---|
 | Repo structure | Scoped `CLAUDE.md` per domain, ADRs, canonical-source map (`docs/README.md`) |
 | Drift guard | `scripts/check-context.mjs` — reference resolution, size budgets, ADR citations, pricing-literal leakage, vendor-SDK boundary (rule 7), and `path:line` citation rot (rule 8: must resolve, must not point past EOF, must never name a line in a budgeted CLAUDE.md) |
-| CI | `.github/workflows/ci.yml` — drift check, seed-vs-generated-tiers check, Biome, `packages/pricing` under **both** Node and Deno, the Edge Function under both, plus `apps/web` and `tools/pilot-model` lib tests. Green. |
+| CI | `.github/workflows/ci.yml` — drift check, seed-vs-generated-tiers check, Biome, `packages/pricing` under **both** Node and Deno, the Edge Function under both, `apps/web`/`tools/pilot-model` lib tests, **`apps/web`'s `tsc`+`next build`**, and **the full pgTAP suite against a bare Postgres built from `supabase/ci/*.sql`** — none of the last two ran in CI before, and a broken build or a broken RLS policy used to pass green. Green. |
 | `apps/web` | Next.js 16 / React 19 / TS 6.0.3 / Tailwind v4. Builds and serves. Brand tokens in `src/app/globals.css` `@theme`. |
 | Marketing pages | `/`, `/drivers`, `/about` — **real UI**, built from `brand/exports/2026-08-07-landing-pages-v1.md` |
 | `/login`, `/signup` | **Working** — password, email link, or phone SMS code, all verified end to end against a real Supabase project. The post-verification destination is `/auth/landing` (ADR-0023) as of this pass — a fresh sign-up with no live ride resolves to `/account`, same as before, but that exact new chain is not yet re-verified against the live project. |

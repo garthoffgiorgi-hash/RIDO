@@ -1,6 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/server";
-import { landingPath } from "@/lib/auth/landing";
+import { landingPath, rideSignalsOrNone } from "@/lib/auth/landing";
 import { validNext } from "@/lib/auth/next-param";
 import { getOwnDriverProfile } from "@/lib/drivers/server";
 import { hasActiveDriverRide, hasActiveRiderRide } from "@/lib/rides/server";
@@ -33,11 +33,17 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(login, { headers: { "Cache-Control": "no-store" } });
   }
 
-  const driver = await getOwnDriverProfile(user);
-  const [hasDriverRide, hasRiderRide] = await Promise.all([
-    driver ? hasActiveDriverRide(driver) : Promise.resolve(false),
-    hasActiveRiderRide(user),
-  ]);
+  // Guarded, because all three of these reads throw on a Supabase error and this is a Route
+  // Handler — app/error.tsx does not cover it. See `rideSignalsOrNone`'s own header for why a
+  // failure here degrades to /account rather than surfacing.
+  const { hasDriverRide, hasRiderRide } = await rideSignalsOrNone(async () => {
+    const driver = await getOwnDriverProfile(user);
+    const [driverRide, riderRide] = await Promise.all([
+      driver ? hasActiveDriverRide(driver) : Promise.resolve(false),
+      hasActiveRiderRide(user),
+    ]);
+    return { hasDriverRide: driverRide, hasRiderRide: riderRide };
+  });
 
   const destination = landingPath({
     explicitNext: validNext(searchParams.get("next")),

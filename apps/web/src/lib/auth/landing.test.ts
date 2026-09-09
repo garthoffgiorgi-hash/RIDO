@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import { landingPath } from "./landing.ts";
+import { landingPath, rideSignalsOrNone } from "./landing.ts";
 
 const NONE = { explicitNext: null, hasDriverRide: false, hasRiderRide: false };
 
@@ -41,5 +41,36 @@ describe("landingPath", () => {
       landingPath({ explicitNext: null, hasDriverRide: true, hasRiderRide: false }),
       "/drive",
     );
+  });
+});
+
+describe("rideSignalsOrNone", () => {
+  it("passes a successful read straight through", async () => {
+    const signals = await rideSignalsOrNone(async () => ({
+      hasDriverRide: true,
+      hasRiderRide: false,
+    }));
+    assert.deepEqual(signals, { hasDriverRide: true, hasRiderRide: false });
+  });
+
+  // The guard this whole function exists for. Its caller is a Route Handler, which app/error.tsx
+  // does not cover, so an unguarded throw here is a raw 500 on every sign-in. If someone removes
+  // the try/catch, this test is what rejects it.
+  it("does not throw when the ride check fails — it degrades", async () => {
+    const signals = await rideSignalsOrNone(async () => {
+      throw new Error("hasActiveRiderRide: could not check for an active ride — network down");
+    });
+    assert.deepEqual(signals, { hasDriverRide: false, hasRiderRide: false });
+  });
+
+  it("degrades to /account, and an explicit next still wins over the degrade", () => {
+    const degraded = { hasDriverRide: false, hasRiderRide: false };
+    assert.equal(landingPath({ explicitNext: null, ...degraded }), "/account");
+    assert.equal(landingPath({ explicitNext: "/drive", ...degraded }), "/drive");
+  });
+
+  it("degrades on a rejected promise, not only a synchronous throw", async () => {
+    const signals = await rideSignalsOrNone(() => Promise.reject(new Error("connection reset")));
+    assert.deepEqual(signals, { hasDriverRide: false, hasRiderRide: false });
   });
 });

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { syncChargeFromWebhook } from "@/lib/payments/server";
+import { chargeUpdateFromEvent } from "@/lib/payments/webhook-event";
 import { syncConnectAccountFromWebhook } from "@/lib/payouts/server";
 import {
   type StripeAccount,
@@ -95,24 +96,27 @@ export async function POST(request: NextRequest) {
     // The app already records these when it makes the call itself — this is reconciliation, for
     // the cases the app never saw: a rider who completed a 3DS challenge after closing the tab, a
     // hold Stripe expired on its own a week later, a capture whose response was lost in transit.
-    // `amount_capturable_updated` fires on every successful manual-capture authorization, so it is
-    // an idempotent no-op on the synchronous no-3DS path — but on the `requires_action` path it is
-    // the ONLY thing that ever writes `authorized`: `completeAuthorization()` resolves the challenge
-    // with Stripe directly from the browser, with no server round trip to write it there instead.
-    const status =
-      event.type === "payment_intent.amount_capturable_updated"
-        ? ("authorized" as const)
-        : event.type === "payment_intent.succeeded"
-          ? ("captured" as const)
-          : event.type === "payment_intent.canceled"
-            ? ("voided" as const)
-            : ("failed" as const);
+    //
+    // What each event MEANS for the ledger is `chargeUpdateFromEvent` (pure, tested) rather than a
+    // ternary here — this is the code deciding what a row says about a rider's money, and every
+    // branch of it is worth pinning. The vendor object is narrowed to the two fields that rule
+    // reads, so `Stripe.PaymentIntent` stops at this boundary.
+    const update = chargeUpdateFromEvent(event.type, {
+      amountReceived: intent.amount_received,
+      failureMessage: intent.last_payment_error?.message ?? null,
+    });
+
+    // Unreachable while this branch and `HANDLED` agree on the same four event types; `null` here
+    // would mean they had drifted apart, and acknowledging is the safe answer either way.
+    if (!update) {
+      return NextResponse.json({ received: true, handled: false });
+    }
 
     const synced = await syncChargeFromWebhook(
       intent.id,
-      status,
-      status === "captured" ? intent.amount_received : null,
-      intent.last_payment_error?.message ?? null,
+      update.status,
+      update.capturedCents,
+      update.failureReason,
     );
 
     if (!synced.ok) {

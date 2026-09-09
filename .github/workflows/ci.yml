@@ -126,3 +126,55 @@ jobs:
       # job first broke.
       - run: npm run check:functions:deno
       - run: npm run test:functions:deno
+
+  typecheck-build:
+    name: Typecheck + build (apps/web)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.6.0"
+      - run: npm ci
+      # Every other job runs a test suite; none of them run the compiler or the bundler over
+      # apps/web itself. `tsc` catches what unit tests structurally can't — an excess property on
+      # a Supabase insert, a noUncheckedIndexedAccess miss — and `next build` catches whatever only
+      # shows up when the whole app is bundled. Both found real bugs during development that no
+      # test in this workflow would have.
+      - run: npx tsc --noEmit -p apps/web/tsconfig.json
+      # No env vars needed: every route reading a Supabase/Stripe/Mapbox key is already dynamic
+      # (`ƒ`), so nothing resolves one at build time. If this step ever starts requiring secrets,
+      # something moved a runtime read into build time by accident.
+      - run: npm run build --workspace=apps/web
+
+  pgtap:
+    name: pgTAP (schema, RLS, migrations)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Ordinary Ubuntu `noble` apt packages, not a Docker service container — ubuntu-latest
+      # already runs `noble`, so this is the same install this repo's own CONTRIBUTING-adjacent
+      # local workflow uses, not something bespoke to CI.
+      - name: Install PostgreSQL 16, pgTAP, PostGIS
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-16 postgresql-16-pgtap postgresql-16-postgis-3 \
+            libtap-parser-sourcehandler-pgtap-perl
+          sudo pg_ctlcluster 16 main start
+      # supabase/ci/*.sql stands in for what a real Supabase project provides and a bare Postgres
+      # doesn't (the three roles, auth.users, auth.uid(), pgTAP's own grants) — see that
+      # directory's own file headers for why each piece exists. Migrations apply in filename
+      # order, same as against the real project; both seeds are needed because several tests'
+      # fixtures assume seeded tiers/cards exist.
+      - name: Build the database
+        run: |
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -c "create database rido_ci;"
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -d rido_ci -f supabase/ci/00_shim.sql
+          for f in supabase/migrations/*.sql; do
+            sudo -u postgres psql -v ON_ERROR_STOP=1 -d rido_ci -f "$f"
+          done
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -d rido_ci -f supabase/ci/01_grants.sql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -d rido_ci -f supabase/seed/commission_tiers.sql
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -d rido_ci -f supabase/seed/fare_rate_cards.sql
+      - name: Run pgTAP suite
+        run: sudo -u postgres pg_prove -d rido_ci supabase/tests/*.sql

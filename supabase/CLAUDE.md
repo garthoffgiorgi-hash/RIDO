@@ -166,8 +166,8 @@ detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-comple
 
 ## Tests (`supabase/tests/`, pgTAP)
 
-Required, not optional — the compliance gate has to hold in the database and not only the app,
-so it is tested there and not only through the app (ADR-0007).
+Required, not optional — the compliance gate has to hold in the database (ADR-0007). **Runs in
+CI** (`pgtap` job) on a bare Postgres built from `supabase/ci/*.sql` + every migration.
 
 At minimum, assert that: an unvetted driver cannot reach `status = 'active'`; a driver cannot
 read another driver's rides; a non-service-role write to a commission column is rejected; a

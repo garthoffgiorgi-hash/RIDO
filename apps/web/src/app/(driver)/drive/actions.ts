@@ -7,6 +7,7 @@ import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
 import * as ratings from "@/lib/ratings/server";
 import * as rides from "@/lib/rides/server";
+import { settleCompletedRide } from "@/lib/rides/settlement";
 
 /**
  * Thin Server Action bridge over `src/lib/rides/server.ts` and `src/lib/payouts/server.ts`,
@@ -53,22 +54,14 @@ export async function completeRide(rideId: string) {
   const outcome = await rides.completeRide(rideId);
   if (outcome.kind !== "completed") return outcome;
 
-  try {
-    await payments.captureRideCharge(rideId);
-  } catch (cause) {
-    console.error("payments: captureRideCharge threw after a successful completion", {
-      rideId,
-      cause,
-    });
-  }
-
-  try {
-    await payouts.payoutRide(rideId);
-  } catch (cause) {
-    // Swallowed deliberately — see above. Logged because a money path that throws (rather than
-    // returning a failure) is a bug worth seeing, even though it must not surface here.
-    console.error("payouts: payoutRide threw after a successful completion", { rideId, cause });
-  }
+  // Ordering and failure-swallowing both live in `settleCompletedRide` (pure, tested) rather than
+  // inline here — they are properties worth being able to prove, not habits. This function keeps
+  // the guard above, because it owns what the driver's screen sees.
+  await settleCompletedRide({
+    capture: () => payments.captureRideCharge(rideId),
+    payout: () => payouts.payoutRide(rideId),
+    log: (message, cause) => console.error(message, { rideId, cause }),
+  });
 
   return outcome;
 }

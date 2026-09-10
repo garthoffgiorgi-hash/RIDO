@@ -40,6 +40,9 @@ Rule: the governing file is the **only** place a value is defined. Everywhere el
 | Why the open-pool board hears arrivals but structurally cannot hear removals | `decisions/0021-realtime-open-pool.md` |
 | Rider identity, cross-party visibility during a live ride, and ratings | `decisions/0022-rider-identity-and-ratings.md` |
 | Where a sign-in lands — the ride check, the tiebreak, why not `proxy.ts` or `/account` | `decisions/0023-post-login-landing.md` |
+| Vercel setup, env vars by build-time vs runtime, CSP rollout plan | `architecture/deployment.md` |
+| Why a scheduled sweep retries stuck money, and why `'failed'` never is | `decisions/0025-stuck-money-sweep.md` |
+| Why `RIDES_LIVE` gates booking/accepting/going online before compliance is done | `decisions/0026-rides-live-kill-switch.md` |
 | What Mapbox costs (estimates only) | `business/mapbox-costs.md` |
 | What must be tested before it ships, and what's deferred | `decisions/0007-testing-bar.md` |
 | Market sizing, take-rate evidence, driver break-even, Empower | `business/market-viability.md` |

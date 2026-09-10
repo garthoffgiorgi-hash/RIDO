@@ -53,6 +53,7 @@ What this costs, what it rules out, what now has to be true.
 | [0023](0023-post-login-landing.md) | A sign-in lands where the ride is, not where the identity is | Accepted |
 | [0024](0024-access-for-all-fee.md) | The CA accessibility fee is itemised, snapshotted, and never commissionable | Accepted |
 | [0025](0025-stuck-money-sweep.md) | A scheduled sweep retries what completion swallowed, never a terminal row | Accepted |
+| [0026](0026-rides-live-kill-switch.md) | A fail-safe switch stops the app operating as a TNC before it's licensed | Accepted |
 
 This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
 rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot

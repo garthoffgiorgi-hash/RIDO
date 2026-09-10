@@ -2,6 +2,7 @@ import "server-only";
 
 import type { User } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/auth/server";
+import { RIDES_NOT_LIVE_MESSAGE, ridesAreLive } from "@/lib/rides/live.ts";
 import { createServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/types/database.types";
 import { type DriversResult, failed } from "./result.ts";
@@ -50,6 +51,13 @@ export async function getOwnDriverProfile(user: User): Promise<DriverProfile | n
  */
 export async function setAcceptingRides(accepting: boolean): Promise<DriversResult<boolean>> {
   const user = await requireUser();
+
+  // ADR-0026: going ONLINE is gated, going offline never is — a driver must always be able to
+  // take themselves off the board. `docs/compliance/ca-tnc.md`'s insurance table has a "Period 1"
+  // tier ("app on, no ride accepted") with its own required coverage, so merely accepting rides
+  // can itself be the regulatory trigger, independent of whether one is ever dispatched.
+  if (accepting && !ridesAreLive()) return failed(RIDES_NOT_LIVE_MESSAGE);
+
   const supabase = await createServerClient();
 
   // Cast for the same one-column reason as above; the runtime payload is a plain boolean.

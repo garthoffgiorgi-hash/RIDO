@@ -216,7 +216,7 @@ inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now i
 inherits the constraint's terms rather than restating them. ✅ **The SB 1376 accessibility fee** —
 $0.10/trip, itemised, seeded per market, snapshotted, never commissionable (ADR-0024). One checkbox
 bundled three fees with three shapes: ⬜ the PUCTRA user fee is aggregate and floor-dominated,
-needing **no schema** (a report over completed rides); ⬜ the airport fee needs ADR-0011's coordinates.
+needing **no schema** (a report over completed rides); ⬜ the airport fee needs ADR-0011's coordinates. ✅ **Deployable today, `RIDES_LIVE` unset** — booking/accepting/online refused server-side (ADR-0026, `architecture/deployment.md`); neither blocker below has moved.
 
 ## Two definitions of "prototype"
 

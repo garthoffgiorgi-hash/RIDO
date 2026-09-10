@@ -1,5 +1,6 @@
 import { RiderTopBar } from "@/components/domain/RiderTopBar";
 import { requireUser } from "@/lib/auth/server";
+import { ridesAreLive } from "@/lib/rides/live.ts";
 import { getActiveRide, getRecentlyCompletedRide } from "@/lib/rides/server";
 import { RequestPanel } from "./RequestPanel";
 
@@ -23,7 +24,11 @@ export default async function RequestPage() {
   return (
     <>
       <RiderTopBar />
-      <RequestPanel initialActiveRide={activeRide} initialRecentlyCompleted={recentlyCompleted} />
+      <RequestPanel
+        initialActiveRide={activeRide}
+        initialRecentlyCompleted={recentlyCompleted}
+        ridesLive={ridesAreLive()}
+      />
     </>
   );
 }

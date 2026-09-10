@@ -31,6 +31,7 @@ import type { Database } from "@/types/database.types";
 import { canAcceptRide, type OpenRide } from "./accept.ts";
 import { cancellationOutcome } from "./cancellation.ts";
 import { completionErrorMessage } from "./completion-errors.ts";
+import { RIDES_NOT_LIVE_MESSAGE, ridesAreLive } from "./live.ts";
 import { failed, type RidesResult } from "./result.ts";
 import { canStartTrip, type StartableRide } from "./start.ts";
 import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
@@ -194,6 +195,8 @@ export type RequestRideOutcome =
   | { readonly kind: "needs_card" }
   /** The rider's bank wants them to confirm. The browser finishes it and calls back. */
   | { readonly kind: "needs_confirmation"; readonly rideId: string; readonly clientSecret: string }
+  /** RIDES_LIVE isn't set (ADR-0026) — an engineering gate, not a claim of compliance. */
+  | { readonly kind: "not_live" }
   | { readonly kind: "failed"; readonly message: string };
 
 /**
@@ -222,6 +225,10 @@ export async function requestRide(
   shownRiderTotalCents: number,
 ): Promise<RequestRideOutcome> {
   const user = await requireUser();
+
+  // ADR-0026, checked first: nothing below this line has run yet, so refusing here writes
+  // nothing and places no hold.
+  if (!ridesAreLive()) return { kind: "not_live" };
 
   if (!pickup.coordinates || !dropoff.coordinates) {
     return { kind: "failed", message: "Pick a specific pickup and dropoff to continue." };
@@ -681,6 +688,12 @@ export async function listOpenRequests(
  */
 export async function acceptRide(rideId: string): Promise<RidesResult<null>> {
   const user = await requireUser();
+
+  // ADR-0026, checked first: no dedicated outcome kind here, since the page-level swap already
+  // covers this case — reusing the shared failure shape rather than widening it for one case
+  // nothing new needs to branch on.
+  if (!ridesAreLive()) return failed(RIDES_NOT_LIVE_MESSAGE);
+
   const driver = await getOwnDriverProfile(user);
 
   if (!driver) {

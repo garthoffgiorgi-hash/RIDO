@@ -145,7 +145,7 @@ there is no ownership test to forget.
 
 ## Not built, in this pass or any prior one
 
-The CPUC 0.33% fee and airport surcharges (`../compliance/ca-tnc.md` calls both out as needing
+The CPUC fees and airport surcharges (`../compliance/ca-tnc.md` calls them out as needing
 to be "first-class line items") still have no schema. **The column to hold the difference now
 exists** — ADR-0017 added `rides.rider_total_cents`, equal to `fare_cents` until a pass-through
 does, with `>= fare_cents` enforced. What is missing is the per-line-item breakdown: `FareQuote`

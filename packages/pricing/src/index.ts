@@ -36,7 +36,13 @@ export type { Plan, SubscriptionState } from "./subscription.ts";
 export { holdAmountCents } from "./authorization.ts";
 export type { HoldInput } from "./authorization.ts";
 
-export { NO_SURGE_BPS, quoteFare, validateRateCard } from "./fare.ts";
+export {
+  ACCESS_FOR_ALL_CODE,
+  ACCESS_FOR_ALL_LABEL,
+  NO_SURGE_BPS,
+  quoteFare,
+  validateRateCard,
+} from "./fare.ts";
 export type {
   FareBreakdown,
   FareLineItem,

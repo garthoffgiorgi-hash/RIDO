@@ -8,7 +8,7 @@ import { RatingPrompt } from "@/components/domain/RatingPrompt";
 import { RideMap } from "@/components/domain/RideMap";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
-import { Fare, formatCents } from "@/components/ui/Fare";
+import { Fare, FareLineItems, formatCents } from "@/components/ui/Fare";
 import { FareChip } from "@/components/ui/FareChip";
 import { Sheet } from "@/components/ui/Sheet";
 import type { Place } from "@/lib/maps/types";
@@ -151,11 +151,12 @@ export function RequestPanel({
   }, [activeRideId, serverRenderedRideId]);
 
   /** Books, and lands the ride in local state. Shared by the plain path and the post-card retry. */
-  function bookedRide(rideId: string, fareCents: number): ActiveRide {
+  function bookedRide(rideId: string, fareCents: number, riderTotalCents: number): ActiveRide {
     return {
       id: rideId,
       status: "requested",
       fareCents,
+      riderTotalCents,
       pickupAddress: pickup?.address ?? null,
       dropoffAddress: dropoff?.address ?? null,
       requestedAt: new Date().toISOString(),
@@ -168,11 +169,13 @@ export function RequestPanel({
     if (!pickup || !dropoff || !quote) return;
     setBooking(true);
     setError(null);
-    const outcome = await requestRide(pickup, dropoff, quote.fareCents);
+    // The total, not the fare: it is the number shown above the button, so it is the number the
+    // rider is agreeing to and the one the server re-checks (ADR-0012, ADR-0024).
+    const outcome = await requestRide(pickup, dropoff, quote.riderTotalCents);
 
     if (outcome.kind === "booked") {
       setBooking(false);
-      setActiveRide(bookedRide(outcome.rideId, quote.fareCents));
+      setActiveRide(bookedRide(outcome.rideId, quote.fareCents, quote.riderTotalCents));
       return;
     }
 
@@ -198,7 +201,8 @@ export function RequestPanel({
       // authorizes on-session — so this is a dialog, not a dead end.
       const confirmed = await completeAuthorization(outcome.clientSecret);
       setBooking(false);
-      if (confirmed.ok) setActiveRide(bookedRide(outcome.rideId, quote.fareCents));
+      if (confirmed.ok)
+        setActiveRide(bookedRide(outcome.rideId, quote.fareCents, quote.riderTotalCents));
       else setError(confirmed.message);
       return;
     }
@@ -321,7 +325,9 @@ export function RequestPanel({
                 <p>{activeRide.pickupAddress ?? "Pickup"}</p>
                 <p>{activeRide.dropoffAddress ?? "Dropoff"}</p>
               </div>
-              <Fare cents={activeRide.fareCents} />
+              {/* The total, not the fare: showing `fareCents` here would display one number
+                  mid-ride and charge a larger one at the end (ADR-0024). */}
+              <Fare cents={activeRide.riderTotalCents} />
               {error && <p className="text-[13px] text-danger">{error}</p>}
 
               {/* Cancel is offered at every live status now, not just 'requested' — ADR-0018 made
@@ -372,7 +378,8 @@ export function RequestPanel({
                 <p>{recentlyCompleted.pickupAddress ?? "Pickup"}</p>
                 <p>{recentlyCompleted.dropoffAddress ?? "Dropoff"}</p>
               </div>
-              <Fare cents={recentlyCompleted.fareCents} />
+              {/* What was actually charged, matching the Stripe capture — not the bare fare. */}
+              <Fare cents={recentlyCompleted.riderTotalCents} />
               <RatingPrompt
                 rideId={recentlyCompleted.id}
                 ratee="driver"
@@ -438,6 +445,9 @@ export function RequestPanel({
                     <Fare cents={quote.riderTotalCents} />
                     <FareChip>{formatEta(quote.durationSeconds)}</FareChip>
                   </div>
+                  {/* Renders nothing until a pass-through exists, so a market owing no statutory
+                      fee still sees the plain headline total and no breakdown. */}
+                  <FareLineItems fareCents={quote.fareCents} lineItems={quote.lineItems} />
                   {/* Honest pricing is the product (brand-guide.md), so the hold is disclosed
                       rather than discovered. A rider seeing a larger number on their statement
                       than the one they agreed to is exactly the incumbent behaviour RIDO is

@@ -51,6 +51,7 @@ What this costs, what it rules out, what now has to be true.
 | [0021](0021-realtime-open-pool.md) | The open pool hears arrivals, and structurally cannot hear removals | Accepted |
 | [0022](0022-rider-identity-and-ratings.md) | Rider identity, cross-party visibility, and ratings | Accepted |
 | [0023](0023-post-login-landing.md) | A sign-in lands where the ride is, not where the identity is | Accepted |
+| [0024](0024-access-for-all-fee.md) | The CA accessibility fee is itemised, snapshotted, and never commissionable | Accepted |
 
 This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
 rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot

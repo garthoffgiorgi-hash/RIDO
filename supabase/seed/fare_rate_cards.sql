@@ -32,20 +32,35 @@
 -- cancellation_grace_seconds (30) — how long after a driver accepts a rider may still cancel free.
 -- Long enough to undo a mistap, short enough that a driver who has started moving is protected.
 
+-- ── THE PASS-THROUGH COLUMN ─────────────────────────────────────────────────────────────────
+--
+-- access_for_all_fee_cents (10 = $0.10) — California's SB 1376 fee, charged on every completed TNC
+-- trip and remitted quarterly to the CPUC. Unlike everything above it, THIS IS NOT RIDO'S NUMBER:
+-- it is set by statute, and the value here tracks the law rather than a pricing decision. It is
+-- also not RIDO's to waive, which is why it ships live rather than at 0 the way ADR-0003 waives
+-- the flat fee through the pilot — that fee is RIDO's own revenue, and this one never is.
+--
+-- It is never commissionable: the rider pays fare + fee, and commission still splits the fare
+-- alone. Source and shape: docs/compliance/ca-tnc.md, ADR-0024.
+
 insert into fare_rate_cards
   (market, base_cents, per_mile_cents, per_minute_cents, minimum_fare_cents, active, effective_from,
-   authorization_buffer_bps, cancellation_fee_cents, cancellation_grace_seconds)
+   authorization_buffer_bps, cancellation_fee_cents, cancellation_grace_seconds,
+   access_for_all_fee_cents)
 values
-  ('san-diego', 300, 107, 27, 680, true, '2026-01-01', 1500, 500, 30)
+  ('san-diego', 300, 107, 27, 680, true, '2026-01-01', 1500, 500, 30, 10)
 -- The three payment columns were added (20260902120100, 20260902120200) after this row already
 -- existed, defaulting to 0 — which for all three means "feature off". `do nothing` would leave a
--- live database on those defaults forever, so they are explicitly upserted. Only these three:
--- the four fare values are NOT overwritten, because a market may have tuned them in place and this
--- seed must not silently undo that.
+-- live database on those defaults forever, so they are explicitly upserted. The pass-through
+-- column (20260910120000) is upserted for the same reason and a sharper one: its 0 default would
+-- silently mean "this market owes no statutory fee," which is a compliance claim, not a config
+-- state. NOT the four fare values, because a market may have tuned them in place and this seed
+-- must not silently undo that.
 on conflict (market, effective_from) do update set
   authorization_buffer_bps   = excluded.authorization_buffer_bps,
   cancellation_fee_cents     = excluded.cancellation_fee_cents,
-  cancellation_grace_seconds = excluded.cancellation_grace_seconds;
+  cancellation_grace_seconds = excluded.cancellation_grace_seconds,
+  access_for_all_fee_cents   = excluded.access_for_all_fee_cents;
 
 -- Worked example, a typical 5-mile / 15-minute ride:
 --   base                  $3.00

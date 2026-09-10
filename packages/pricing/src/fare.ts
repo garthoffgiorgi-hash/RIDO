@@ -77,6 +77,18 @@ export interface FareLineItem {
   readonly amountCents: number;
 }
 
+/**
+ * The first pass-through, and so far the only one: California's SB 1376 "Access for All" fee, a
+ * flat amount on every completed TNC trip that RIDO collects from the rider and remits to the CPUC
+ * quarterly. ADR-0024.
+ *
+ * The AMOUNT is deliberately not here — it is a seeded column on `fare_rate_cards`, per market,
+ * arriving as `accessForAllFeeCents` below. A code and a rider-facing label are not money, so they
+ * can live in code; the moment a figure did, repricing would mean editing this package.
+ */
+export const ACCESS_FOR_ALL_CODE = "access_for_all";
+export const ACCESS_FOR_ALL_LABEL = "CA accessibility fee (SB 1376)";
+
 export interface FareBreakdown {
   readonly baseCents: number;
   readonly distanceCents: number;
@@ -112,6 +124,14 @@ export interface FareQuoteInput {
    * one.
    */
   readonly surgeMultiplierBps?: number;
+  /**
+   * The SB 1376 pass-through in cents, from the market's rate card. Absent or `0` produces NO line
+   * item, so a market that owes nothing renders no row and its rider total equals its fare.
+   *
+   * Deliberately here rather than on `FareRateCard`: that type is the four values that decide a
+   * price, and a pass-through decides nothing about a price — it rides alongside one.
+   */
+  readonly accessForAllFeeCents?: number;
 }
 
 const requireNonNegativeInteger = (value: number, name: string): void => {
@@ -153,10 +173,12 @@ export function validateRateCard(card: FareRateCard): void {
 export function quoteFare(input: FareQuoteInput): FareQuote {
   const { distanceMeters, durationSeconds, rateCard } = input;
   const surgeMultiplierBps = input.surgeMultiplierBps ?? NO_SURGE_BPS;
+  const accessForAllFeeCents = input.accessForAllFeeCents ?? 0;
 
   requireNonNegativeInteger(distanceMeters, "distanceMeters");
   requireNonNegativeInteger(durationSeconds, "durationSeconds");
   requireNonNegativeInteger(surgeMultiplierBps, "surgeMultiplierBps");
+  requireNonNegativeInteger(accessForAllFeeCents, "accessForAllFeeCents");
   validateRateCard(rateCard);
 
   // Guard the products before they happen rather than inspecting the wreckage afterwards. Both
@@ -190,9 +212,19 @@ export function quoteFare(input: FareQuoteInput): FareQuote {
       ? cents(flooredCents)
       : applyMultiplierBps(cents(flooredCents), surgeMultiplierBps as Bps);
 
-  // Empty today. Summed rather than assumed zero so that adding the first pass-through is a
-  // one-line change here and no change at all anywhere downstream.
-  const lineItems: readonly FareLineItem[] = [];
+  // Built AFTER surge, and that ordering is the point: surge multiplies `fareCents` above and a
+  // pass-through is never multiplied by it. A 2x trip owes the CPUC the same flat fee a 1x trip
+  // does — it is a fee on a trip happening, not a share of what the trip cost. (ADR-0024)
+  const lineItems: readonly FareLineItem[] =
+    accessForAllFeeCents === 0
+      ? []
+      : [
+          {
+            code: ACCESS_FOR_ALL_CODE,
+            label: ACCESS_FOR_ALL_LABEL,
+            amountCents: accessForAllFeeCents,
+          },
+        ];
   const passThroughCents = lineItems.reduce((sum, item) => sum + item.amountCents, 0);
 
   return {

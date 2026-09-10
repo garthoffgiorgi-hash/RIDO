@@ -94,13 +94,59 @@ export async function getPaymentPolicy(market: string): Promise<FaresResult<Paym
   };
 }
 
-/** Prices a measured trip against the market's active card. Composes the two server-only reads. */
+/**
+ * What this market makes RIDO collect on someone else's behalf — today, only California's SB 1376
+ * fee (ADR-0024).
+ *
+ * A third read off the same row, for the same reason `getPaymentPolicy` is a second one: a
+ * pass-through is not a fare input. `quoteFare()` receives the amount as an argument and has no
+ * idea what the CPUC is, and `FareRateCard` stays the four values that decide a price. Same row,
+ * a third question.
+ */
+export interface PassThroughPolicy {
+  readonly accessForAllFeeCents: number;
+}
+
+export async function getPassThroughPolicy(
+  market: string,
+): Promise<FaresResult<PassThroughPolicy>> {
+  const supabase = await createServerClient();
+  const { data, error } = await supabase.rpc("active_fare_rate_card", { p_market: market });
+
+  if (error) {
+    return failed(`We couldn't load pricing for ${market} right now. Try again in a moment.`);
+  }
+
+  const row = data?.[0] as { access_for_all_fee_cents?: number } | undefined;
+  if (!row) return failed(`There's no active rate card for ${market} yet.`);
+
+  // Defaulting to zero for the same reason `getPaymentPolicy` does, with one difference worth
+  // stating: for the payment columns a 0 means "this policy is off", but here it is a claim that
+  // the market owes no statutory fee. The seed asserts the real value precisely so a live database
+  // never sits on this default silently — `supabase/tests/025_access_for_all_fee.sql` pins it.
+  return { ok: true, data: { accessForAllFeeCents: row.access_for_all_fee_cents ?? 0 } };
+}
+
+/**
+ * Prices a measured trip against the market's active card, plus whatever that market makes RIDO
+ * collect on top.
+ *
+ * Both reads hit the same `active_fare_rate_card` row, and they run concurrently rather than in
+ * sequence: `quoteRideRequest()` is called every time a rider changes pickup or dropoff, so this
+ * is a hot path and the second read must not cost a second round trip. They stay two functions
+ * because they answer two different questions and hand back two different types — a pass-through
+ * is not a fare input — but nothing about that requires waiting.
+ */
 export async function quoteRide(
   measurement: RouteMeasurement,
   market: string,
 ): Promise<FaresResult<FareQuote>> {
-  const card = await getActiveFareRateCard(market);
+  const [card, passThrough] = await Promise.all([
+    getActiveFareRateCard(market),
+    getPassThroughPolicy(market),
+  ]);
   if (!card.ok) return card;
+  if (!passThrough.ok) return passThrough;
 
   return {
     ok: true,
@@ -108,6 +154,7 @@ export async function quoteRide(
       distanceMeters: measurement.distanceMeters,
       durationSeconds: measurement.durationSeconds,
       rateCard: card.data,
+      accessForAllFeeCents: passThrough.data.accessForAllFeeCents,
     }),
   };
 }

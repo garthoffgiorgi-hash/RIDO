@@ -12,7 +12,13 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
 
-import { type FareRateCard, NO_SURGE_BPS, quoteFare, validateRateCard } from "./fare.ts";
+import {
+  ACCESS_FOR_ALL_CODE,
+  type FareRateCard,
+  NO_SURGE_BPS,
+  quoteFare,
+  validateRateCard,
+} from "./fare.ts";
 
 /** $2 base, $1/mile, $0.30/minute, $5 minimum. Deliberately round, deliberately not ours. */
 const CARD: FareRateCard = {
@@ -29,6 +35,17 @@ const quote = (meters: number, seconds: number, surge?: number) =>
     durationSeconds: seconds,
     rateCard: CARD,
     surgeMultiplierBps: surge,
+  });
+
+/** 7 cents: not the real fee, for the same reason CARD isn't the real card. */
+const FEE = 7;
+const quoteWithFee = (meters: number, seconds: number, fee: number, surge?: number) =>
+  quoteFare({
+    distanceMeters: meters,
+    durationSeconds: seconds,
+    rateCard: CARD,
+    surgeMultiplierBps: surge,
+    accessForAllFeeCents: fee,
   });
 
 describe("the metered components", () => {
@@ -152,11 +169,66 @@ describe("the quote's shape", () => {
     assert.equal(baseCents + distanceCents + timeCents, q.fareCents);
   });
 
-  it("has no pass-through line items yet, and the rider total equals the fare", () => {
-    // When CPUC or airport fees land, this test changes and everything downstream does not.
+  it("has no pass-through line items when none is supplied, and the total equals the fare", () => {
+    // Was "no pass-throughs exist yet"; ADR-0024 made it the explicit no-pass-through case. A
+    // market that owes no fee still gets a quote whose total is its fare, and renders no row.
     const q = quote(12_000, 1_200);
     assert.deepEqual(q.lineItems, []);
     assert.equal(q.riderTotalCents, q.fareCents);
+  });
+});
+
+describe("the SB 1376 pass-through (ADR-0024)", () => {
+  it("adds exactly one line item, carrying the code the rest of the system matches on", () => {
+    const q = quoteWithFee(12_000, 1_200, FEE);
+    assert.equal(q.lineItems.length, 1);
+    assert.equal(q.lineItems[0]?.code, ACCESS_FOR_ALL_CODE);
+    assert.equal(q.lineItems[0]?.amountCents, FEE);
+  });
+
+  it("adds the fee to the rider's total", () => {
+    const q = quoteWithFee(12_000, 1_200, FEE);
+    assert.equal(q.riderTotalCents, q.fareCents + FEE);
+  });
+
+  // THE tripwire. `fareCents` is what commission splits and what `rides.fare_cents` stores, so a
+  // fee that reached it would make a driver pay commission on a tax — silently, forever, in the
+  // snapshot. If this fails, nothing else about the change matters.
+  it("does not change the commissionable fare", () => {
+    const withFee = quoteWithFee(12_000, 1_200, FEE);
+    const without = quote(12_000, 1_200);
+    assert.equal(withFee.fareCents, without.fareCents);
+  });
+
+  // The property most likely to regress: the fee is summed after surge multiplies the fare, and a
+  // refactor that moved it above would double it on a 2x trip. The CPUC is owed a flat amount per
+  // trip, not a share of what the trip cost.
+  it("is not multiplied by surge", () => {
+    const surged = quoteWithFee(12_000, 1_200, FEE, 2 * NO_SURGE_BPS);
+    const plain = quoteWithFee(12_000, 1_200, FEE);
+    assert.equal(surged.lineItems[0]?.amountCents, FEE);
+    assert.equal(surged.fareCents, 2 * plain.fareCents);
+    assert.equal(surged.riderTotalCents, surged.fareCents + FEE);
+  });
+
+  it("treats an explicit zero exactly like an absent fee", () => {
+    const zero = quoteWithFee(12_000, 1_200, 0);
+    const absent = quote(12_000, 1_200);
+    assert.deepEqual(zero.lineItems, []);
+    assert.equal(zero.riderTotalCents, zero.fareCents);
+    assert.equal(zero.riderTotalCents, absent.riderTotalCents);
+  });
+
+  it("rejects a negative or fractional fee rather than charging it", () => {
+    assert.throws(() => quoteWithFee(12_000, 1_200, -1));
+    assert.throws(() => quoteWithFee(12_000, 1_200, 10.5));
+  });
+
+  // A minimum-fare trip is where a fee could most plausibly be swallowed by the floor.
+  it("rides alongside the minimum fare rather than being absorbed into it", () => {
+    const q = quoteWithFee(0, 0, FEE);
+    assert.equal(q.fareCents, CARD.minimumFareCents);
+    assert.equal(q.riderTotalCents, CARD.minimumFareCents + FEE);
   });
 });
 

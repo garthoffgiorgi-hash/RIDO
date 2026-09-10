@@ -16,9 +16,10 @@ San Diego, effective 2026-01-01: **$3.00 base · $1.07/mile · $0.27/minute · $
 
 Surge defaults to 1.00× and nothing computes anything else yet — it is a seam, per ADR-0008.
 
-A quote also carries **pass-through line items** (CPUC, airport) separately from the fare. That
-list is empty today. It matters that it exists: those are not RIDO revenue and must never be
-commissionable.
+A quote also carries **pass-through line items** separately from the fare. One exists today: the
+SB 1376 accessibility fee, $0.10 per trip, itemised to the rider (ADR-0024). It matters that they
+are separate: those are not RIDO revenue and must never be commissionable — which is also why the
+discount figures below are computed on the fare, and adding the fee does not move them.
 
 ## The one thing to know first
 

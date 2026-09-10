@@ -1,11 +1,13 @@
 import "server-only";
 
 import {
+  ACCESS_FOR_ALL_CODE,
   type Bps,
   type Cents,
   cents,
   commissionForRide,
   type FareBreakdown,
+  type FareLineItem,
   holdAmountCents,
 } from "@rido/pricing";
 import type { User } from "@supabase/supabase-js";
@@ -122,8 +124,25 @@ async function readRiderCard(
 /** First market is San Diego, matching every other hardcoded market string in this codebase. */
 const MARKET = "san-diego";
 
+/**
+ * Pulls the SB 1376 amount back out of a quote's line items for the column that snapshots it.
+ *
+ * Reads by `code` rather than taking `lineItems[0]`, so the day a second pass-through is added
+ * this keeps writing the right one into the right column instead of silently recording an airport
+ * fee as an accessibility fee. Absent means the market owes nothing, which is 0, not an error.
+ */
+function accessForAllCents(quote: { readonly lineItems: readonly FareLineItem[] }): number {
+  return quote.lineItems.find((item) => item.code === ACCESS_FOR_ALL_CODE)?.amountCents ?? 0;
+}
+
 export interface RideQuote {
   readonly fareCents: number;
+  /**
+   * The pass-throughs making up the difference between `fareCents` and `riderTotalCents` — today
+   * only the SB 1376 fee (ADR-0024). Carried through so the sheet can itemise what a rider is
+   * paying rather than showing a total that silently exceeds the fare.
+   */
+  readonly lineItems: readonly FareLineItem[];
   readonly riderTotalCents: number;
   readonly breakdown: FareBreakdown;
   readonly distanceMeters: number;
@@ -146,6 +165,7 @@ async function measureAndQuote(
     ok: true,
     data: {
       fareCents: quote.data.fareCents,
+      lineItems: quote.data.lineItems,
       riderTotalCents: quote.data.riderTotalCents,
       breakdown: quote.data.breakdown,
       distanceMeters: measurement.data.distanceMeters,
@@ -199,7 +219,7 @@ export type RequestRideOutcome =
 export async function requestRide(
   pickup: Place,
   dropoff: Place,
-  shownFareCents: number,
+  shownRiderTotalCents: number,
 ): Promise<RequestRideOutcome> {
   const user = await requireUser();
 
@@ -210,7 +230,11 @@ export async function requestRide(
   const quote = await measureAndQuote(pickup.coordinates, dropoff.coordinates);
   if (!quote.ok) return { kind: "failed", message: quote.message };
 
-  if (quote.data.fareCents !== shownFareCents) {
+  // Compares the TOTAL, not the fare. ADR-0012's rule is that a rider is never charged a number
+  // they never saw, and since ADR-0024 the number they see is the total — so this is what has to
+  // match. Strictly stronger than comparing the fare: it also re-confirms when a pass-through
+  // moves while the fare stays put, which comparing `fareCents` would have waved through.
+  if (quote.data.riderTotalCents !== shownRiderTotalCents) {
     return { kind: "price_changed", quote: quote.data };
   }
 
@@ -231,15 +255,23 @@ export async function requestRide(
   // here — TypeScript's excess-property check never runs on a type-asserted object literal, so it
   // silently accepted a nonsense field, not only market. Delete the intersection once
   // `npm run types:generate` runs against this migration.
-  const payload: Database["public"]["Tables"]["rides"]["Insert"] & { market: string } = {
+  const payload: Database["public"]["Tables"]["rides"]["Insert"] & {
+    market: string;
+    access_for_all_fee_cents: number;
+  } = {
     rider_id: user.id,
     driver_id: null,
     market: MARKET,
     fare_cents: quote.data.fareCents,
     // The end of a journey to nowhere: `riderTotalCents` has been computed by `quoteFare()` and
     // carried through `RideQuote` since ADR-0009, and discarded at this exact line until ADR-0017.
-    // It is what the rider is charged; `fare_cents` is what commission splits. Equal today.
+    // It is what the rider is charged; `fare_cents` is what commission splits. Since ADR-0024 they
+    // differ by the line below, and `rides_rider_total_covers_pass_throughs` enforces that.
     rider_total_cents: quote.data.riderTotalCents,
+    // Snapshotted rather than derived, because `rider_total_cents - fare_cents` stops being
+    // decomposable the day a second pass-through exists. `quoteFare()` produced this amount from
+    // the seeded card; nothing here computes it (root CLAUDE.md invariant 5).
+    access_for_all_fee_cents: accessForAllCents(quote.data),
     pickup_address: pickup.address,
     dropoff_address: dropoff.address,
   };
@@ -334,6 +366,11 @@ export interface ActiveRide {
   readonly id: string;
   readonly status: RideStatus;
   readonly fareCents: number;
+  /**
+   * What the rider is actually charged — the fare plus the SB 1376 pass-through (ADR-0024). This
+   * is the figure a rider's own surfaces render; `fareCents` is the driver's business.
+   */
+  readonly riderTotalCents: number;
   readonly pickupAddress: string | null;
   readonly dropoffAddress: string | null;
   readonly requestedAt: string;
@@ -352,7 +389,9 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
   const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("rides")
-    .select("id, status, driver_id, fare_cents, pickup_address, dropoff_address, requested_at")
+    .select(
+      "id, status, driver_id, fare_cents, rider_total_cents, pickup_address, dropoff_address, requested_at",
+    )
     .eq("rider_id", user.id)
     .in("status", ACTIVE_STATUSES)
     .maybeSingle();
@@ -366,6 +405,9 @@ export async function getActiveRide(user: User): Promise<ActiveRide | null> {
     id: data.id,
     status: data.status as RideStatus,
     fareCents: data.fare_cents,
+    // `?? fare_cents` for rides booked before ADR-0017 added the column, which is the same
+    // fallback `captureRideCharge()` uses against the same rows for the same reason.
+    riderTotalCents: data.rider_total_cents ?? data.fare_cents,
     pickupAddress: data.pickup_address,
     dropoffAddress: data.dropoff_address,
     requestedAt: data.requested_at,
@@ -1020,6 +1062,8 @@ export interface CompletedRideSummary {
   readonly pickupAddress: string | null;
   readonly dropoffAddress: string | null;
   readonly fareCents: number;
+  /** What was actually charged, fare plus pass-throughs — the figure this summary shows. */
+  readonly riderTotalCents: number;
   readonly completedAt: string;
 }
 
@@ -1039,7 +1083,7 @@ export async function getRecentlyCompletedRide(user: User): Promise<CompletedRid
 
   const { data, error } = await supabase
     .from("rides")
-    .select("id, pickup_address, dropoff_address, fare_cents, completed_at")
+    .select("id, pickup_address, dropoff_address, fare_cents, rider_total_cents, completed_at")
     .eq("rider_id", user.id)
     .eq("status", "completed")
     .gte("completed_at", cutoff)
@@ -1054,6 +1098,7 @@ export async function getRecentlyCompletedRide(user: User): Promise<CompletedRid
     pickupAddress: data.pickup_address,
     dropoffAddress: data.dropoff_address,
     fareCents: data.fare_cents,
+    riderTotalCents: data.rider_total_cents ?? data.fare_cents,
     completedAt: data.completed_at,
   };
 }

@@ -148,9 +148,11 @@ switcher before approving — accounts under one login don't share CLI sessions 
 
 ## Invariants this flow must preserve
 
-- The rider is charged `rides.rider_total_cents` — what they agreed to, and what commission was
-  computed against. Nothing recomputes it at capture time.
-- `rider_total_cents >= fare_cents`, always. Commission still splits `fare_cents` alone, so
+- The rider is charged `rides.rider_total_cents` — what they agreed to, and what the price guard
+  re-checks at confirm (ADR-0024). Nothing recomputes it at capture time. It is **not** what
+  commission is computed against; that is `fare_cents`, and the next line is why.
+- `rider_total_cents >= fare_cents`, always, and since ADR-0024 the gap is real rather than
+  hypothetical: it is `access_for_all_fee_cents`. Commission still splits `fare_cents` alone, so
   `rides_commission_sums_to_fare` is untouched by anything here.
 - No money is computed in `src/lib/payments/`. The hold comes from `@rido/pricing`, the capture
   amount from a stored column, the fee from the rate card.

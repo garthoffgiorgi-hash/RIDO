@@ -213,8 +213,10 @@ live-ride-only driver/rider cards, two-directional `ride_ratings`. ⬜ Dispatch/
 **Phase 4 — compliance gates.** ✅ Driver activation gated on background check + vehicle
 inspection, enforced in the database (a `CHECK` constraint plus RLS) **and now in the app** —
 `complete-ride`'s `authorizeCompletion` refuses any driver who isn't `status = 'active'`, which
-inherits the constraint's terms rather than restating them. ⬜ CPUC fee and airport surcharges as
-first-class line items — no schema exists for either.
+inherits the constraint's terms rather than restating them. ✅ **The SB 1376 accessibility fee** —
+$0.10/trip, itemised, seeded per market, snapshotted, never commissionable (ADR-0024). One checkbox
+bundled three fees with three shapes: ⬜ the PUCTRA user fee is aggregate and floor-dominated,
+needing **no schema** (a report over completed rides); ⬜ the airport fee needs ADR-0011's coordinates.
 
 ## Two definitions of "prototype"
 

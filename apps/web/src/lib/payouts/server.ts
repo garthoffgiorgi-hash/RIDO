@@ -488,3 +488,35 @@ export async function retryPayout(payoutId: string): Promise<PayoutsResult<Settl
 
   return settle(payout);
 }
+
+/**
+ * Retries one payout with no session — the sweep's only entry point into `settle()` (ADR-0025).
+ *
+ * `retryPayout()` above cannot be reused directly: it opens with `requireUser()`, which redirects
+ * to `/login` when there is no session — meaningless from an unauthenticated cron — and an
+ * ownership check with no meaning for a service-initiated call. This is that function with exactly
+ * those two session-bound pieces removed. Everything that actually matters is identical and
+ * therefore not reimplemented: `settle()`'s claim, its `pending`/`failed`/`paid` classification,
+ * and its `finally`-released lock.
+ *
+ * `null` for an already-`paid` row, matching `payoutRide()`'s posture rather than `retryPayout()`'s
+ * — the sweep queried this row as `pending` moments earlier, so finding it `paid` now is a benign
+ * race with another settle already in flight, not a failure worth reporting as still stuck.
+ */
+export async function settlePayoutForSweep(
+  payoutId: string,
+): Promise<PayoutsResult<SettleOutcome | null>> {
+  const service = createServiceRoleClient();
+  const { data, error } = await service
+    .from("driver_payouts")
+    .select(PAYOUT_COLUMNS)
+    .eq("id", payoutId)
+    .maybeSingle();
+
+  if (error || !data) return failed("We couldn't find that payout.");
+
+  const payout = data as DriverPayoutRow;
+  if (payout.status === "paid") return { ok: true, data: null };
+
+  return settle(payout);
+}

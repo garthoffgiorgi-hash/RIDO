@@ -119,8 +119,8 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
   ledger's copy of the ride's write-once `driver_payout_cents`; a capture is the stored
   `rider_total_cents`; a hold is `holdAmountCents()`'s. RIDO absorbs card processing, so nothing is
   netted. `@rido/pricing` is imported by neither — that would be the bug.
-- **`rider_total_cents` is what the rider pays, `fare_cents` what commission splits.** Equal until a
-  pass-through exists. Render the first to a rider; the second is the driver's business.
+- **`rider_total_cents` is what the rider pays, `fare_cents` what commission splits.** They differ by
+  the itemised CA accessibility fee (ADR-0024). Render the first to a rider, the second to a driver.
 - **Two vendor files, one rule.** `src/lib/stripe/server.ts` is the only file importing `stripe`;
   `src/lib/payments/browser.ts` the only one importing `@stripe/stripe-js` (mounted per `map.ts`'s
   opaque-handle precedent — **not** the React bindings, which would put vendor components in JSX).

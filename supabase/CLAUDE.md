@@ -149,9 +149,9 @@ detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-comple
   `rides.status`. **The fee must be captured before the status flips to `canceled`**:
   `queue_cancellation_payout()` reads the captured row.
 - **`rides.rider_total_cents` is what the rider pays; `fare_cents` is what commission splits** —
-  equal until a `FareLineItem` exists, with `>= fare_cents` enforced. Commission still binds
+  they differ by `access_for_all_fee_cents`, which the total must cover. Commission still binds
   `fare_cents` alone, so `rides_commission_sums_to_fare` is untouched: a pass-through is money RIDO
-  collects and remits, never revenue to split. (ADR-0017, ADR-0018)
+  collects and remits, never revenue to split. (ADR-0017, ADR-0018, ADR-0024)
 - **A retry needs its own claim, not just a stable idempotency key.** `claim_driver_payout_attempt`
   hands out an attempt number, folded into `<payout id>_<attempt>` as Stripe's key, so a genuinely
   new retry is genuinely new to Stripe rather than a replay of the first cached response — a payout

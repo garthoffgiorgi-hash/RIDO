@@ -48,14 +48,14 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 `src/proxy.ts` refreshes the session cookie and bounces anonymous visitors off `PROTECTED_PREFIXES`
 as a real 307. Named `proxy.ts` / `proxy()` — Next.js 16 deprecated `middleware`. It runs on nearly
 every route, so **without `NEXT_PUBLIC_SUPABASE_URL`/`_ANON_KEY` set, every page 500s**, by design.
-Its matcher **excludes `api/stripe`**: a webhook has no cookies and no session to refresh.
+Its matcher **excludes `api/stripe` and `api/cron`**: neither has cookies or a session to refresh.
 
 `error.tsx` · `global-error.tsx` · `not-found.tsx` · `loading.tsx` sit at the app root. `loading.tsx`
 puts every route behind Suspense, turning a page-level `redirect()` into a streamed 200 plus a
 client navigation — which is why the auth gate is *also* in `proxy.ts`. **`requireUser()` in the
 page remains the security boundary**; the proxy list only buys a clean status, so a miss fails safe.
 
-**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug.
+**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug. **`src/lib/ops/`** composes `payments/`/`payouts/` for ADR-0025's stuck-money sweep, called only from `api/cron/sweep-stuck-money` — no vendor SDK, so it sits outside the domain list above.
 
 ## Auth
 

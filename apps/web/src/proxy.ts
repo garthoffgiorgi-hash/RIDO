@@ -77,9 +77,12 @@ export async function proxy(request: NextRequest) {
  * trip — and, worse, `setAll` would attach `Set-Cookie` headers to a response whose only reader is
  * Stripe's delivery system. The endpoint authenticates by signature (`STRIPE_WEBHOOK_SECRET`),
  * not by session; those are different trust mechanisms and the session one has no business here.
+ *
+ * `api/cron` is excluded for the identical reason (ADR-0025): Vercel Cron calls it with no
+ * cookies, authenticating by a bearer secret (`CRON_SECRET`) instead of a session.
  */
 export const config = {
   matcher: [
-    "/((?!api/stripe|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/stripe|api/cron|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };

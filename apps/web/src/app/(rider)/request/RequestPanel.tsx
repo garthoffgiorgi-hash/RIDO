@@ -6,6 +6,7 @@ import { CardForm } from "@/components/domain/CardForm";
 import { PlaceSearch } from "@/components/domain/PlaceSearch";
 import { RatingPrompt } from "@/components/domain/RatingPrompt";
 import { RideMap } from "@/components/domain/RideMap";
+import { RidesNotLiveCard } from "@/components/domain/RidesNotLiveCard";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Fare, FareLineItems, formatCents } from "@/components/ui/Fare";
@@ -41,9 +42,17 @@ const formatEta = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))}
 export function RequestPanel({
   initialActiveRide,
   initialRecentlyCompleted,
+  ridesLive,
 }: {
   initialActiveRide: ActiveRide | null;
   initialRecentlyCompleted: CompletedRideSummary | null;
+  /**
+   * ADR-0026. Gates only the booking form — an existing `activeRide` or `recentlyCompleted`
+   * summary still renders regardless, since a ride already in flight when the flag flips off must
+   * still be trackable and its receipt still visible. Read once at page load; this is a legal
+   * gate expected to change by deploy, not something worth a realtime subscription over.
+   */
+  ridesLive: boolean;
 }) {
   const router = useRouter();
 
@@ -196,6 +205,17 @@ export function RequestPanel({
       return;
     }
 
+    if (outcome.kind === "not_live") {
+      // Should be unreachable in practice — the page swaps this whole panel out when rides aren't
+      // live (ADR-0026) — but a flag flipping mid-session is a real race, so this stays a plain
+      // error rather than a crash. Owns its own copy rather than importing the server's constant:
+      // that file has no client boundary guard, and a component pulling in a process.env read is
+      // exactly the drift `apps/web/CLAUDE.md`'s vendor-boundary rule exists to prevent.
+      setBooking(false);
+      setError("Not accepting rides in this area yet — check back soon.");
+      return;
+    }
+
     if (outcome.kind === "needs_confirmation") {
       // The bank wants the rider to confirm. They are on screen — which is the entire reason RIDO
       // authorizes on-session — so this is a dialog, not a dead end.
@@ -279,9 +299,11 @@ export function RequestPanel({
             ? "Your ride"
             : recentlyCompleted
               ? "Trip complete"
-              : cardSecret
-                ? "Add a card"
-                : "Where to?"
+              : !ridesLive
+                ? "Not yet available"
+                : cardSecret
+                  ? "Add a card"
+                  : "Where to?"
         }
         className="max-h-[75vh] overflow-y-auto"
       >
@@ -395,6 +417,8 @@ export function RequestPanel({
                 Book another ride
               </Button>
             </>
+          ) : !ridesLive ? (
+            <RidesNotLiveCard variant="rider" />
           ) : cardSecret ? (
             <>
               <p className="font-sora text-heading font-semibold text-ink">Add a card</p>

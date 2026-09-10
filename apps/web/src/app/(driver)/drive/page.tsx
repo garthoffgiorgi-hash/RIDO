@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { RidesNotLiveCard } from "@/components/domain/RidesNotLiveCard";
 import { TierProgress } from "@/components/domain/TierProgress";
 import { requireUser } from "@/lib/auth/server";
 import { getDriverTierProgress } from "@/lib/commission/server";
@@ -11,6 +12,7 @@ import {
   refreshConnectState,
   settlePendingPayoutsForDriver,
 } from "@/lib/payouts/server";
+import { ridesAreLive } from "@/lib/rides/live.ts";
 import { getDriverActiveRide, listOpenRequests } from "@/lib/rides/server";
 import { AvailabilityToggle } from "./AvailabilityToggle";
 import { CurrentRidePanel } from "./CurrentRidePanel";
@@ -63,7 +65,11 @@ export default async function DrivePage({
 
   const currentRide = active && freshDriver ? await getDriverActiveRide(freshDriver) : null;
   const hasNoActiveRide = currentRide?.ok && currentRide.data === null;
-  const openRequests = hasNoActiveRide && freshDriver ? await listOpenRequests(freshDriver) : null;
+  // ADR-0026: no point reading the open pool when nothing can be shown from it. A ride already in
+  // flight is untouched either way — `currentRide` above doesn't gate on `ridesAreLive()`, since
+  // finishing an already-accepted ride is never what this flag exists to stop.
+  const openRequests =
+    hasNoActiveRide && freshDriver && ridesAreLive() ? await listOpenRequests(freshDriver) : null;
   const payouts = active && freshDriver ? await getPayoutSummary(freshDriver) : null;
   const tierProgress = active && freshDriver ? await getDriverTierProgress(freshDriver.id) : null;
 
@@ -119,6 +125,8 @@ export default async function DrivePage({
         )}
 
         {currentRide?.ok && currentRide.data && <CurrentRidePanel ride={currentRide.data} />}
+
+        {hasNoActiveRide && !ridesAreLive() && <RidesNotLiveCard variant="driver" />}
 
         {openRequests &&
           (openRequests.ok ? (

@@ -2,7 +2,7 @@
   "name": "rido",
   "private": true,
   "version": "0.0.0",
-  "description": "RIDO \u2014 a driver-favorable rideshare marketplace.",
+  "description": "RIDO — a driver-favorable rideshare marketplace.",
   "workspaces": [
     "apps/*",
     "packages/*",

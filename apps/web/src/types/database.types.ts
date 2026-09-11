@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       commission_tiers: {
@@ -43,6 +68,35 @@ export type Database = {
           upper_bound_cents?: number | null
         }
         Relationships: []
+      }
+      driver_availability_log: {
+        Row: {
+          accepting_rides: boolean
+          changed_at: string
+          driver_id: string
+          id: string
+        }
+        Insert: {
+          accepting_rides: boolean
+          changed_at?: string
+          driver_id: string
+          id?: string
+        }
+        Update: {
+          accepting_rides?: boolean
+          changed_at?: string
+          driver_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "driver_availability_log_driver_id_fkey"
+            columns: ["driver_id"]
+            isOneToOne: false
+            referencedRelation: "drivers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       driver_monthly_stats: {
         Row: {
@@ -193,6 +247,7 @@ export type Database = {
           email: string | null
           full_name: string
           id: string
+          market: string
           phone: string | null
           status: string
           stripe_account_id: string | null
@@ -216,6 +271,7 @@ export type Database = {
           email?: string | null
           full_name: string
           id?: string
+          market?: string
           phone?: string | null
           status?: string
           stripe_account_id?: string | null
@@ -239,6 +295,7 @@ export type Database = {
           email?: string | null
           full_name?: string
           id?: string
+          market?: string
           phone?: string | null
           status?: string
           stripe_account_id?: string | null
@@ -257,6 +314,7 @@ export type Database = {
       }
       fare_rate_cards: {
         Row: {
+          access_for_all_fee_cents: number
           active: boolean
           authorization_buffer_bps: number
           base_cents: number
@@ -270,6 +328,7 @@ export type Database = {
           per_minute_cents: number
         }
         Insert: {
+          access_for_all_fee_cents?: number
           active?: boolean
           authorization_buffer_bps?: number
           base_cents: number
@@ -283,6 +342,7 @@ export type Database = {
           per_minute_cents: number
         }
         Update: {
+          access_for_all_fee_cents?: number
           active?: boolean
           authorization_buffer_bps?: number
           base_cents?: number
@@ -499,6 +559,7 @@ export type Database = {
       rides: {
         Row: {
           accepted_at: string | null
+          access_for_all_fee_cents: number
           canceled_at: string | null
           commission_cents: number | null
           commission_rate_bps: number | null
@@ -514,6 +575,7 @@ export type Database = {
           duration_seconds: number | null
           fare_cents: number
           id: string
+          market: string
           pickup_address: string | null
           pickup_geog: unknown
           pickup_lat: number | null
@@ -526,6 +588,7 @@ export type Database = {
         }
         Insert: {
           accepted_at?: string | null
+          access_for_all_fee_cents?: number
           canceled_at?: string | null
           commission_cents?: number | null
           commission_rate_bps?: number | null
@@ -541,6 +604,7 @@ export type Database = {
           duration_seconds?: number | null
           fare_cents: number
           id?: string
+          market?: string
           pickup_address?: string | null
           pickup_geog?: unknown
           pickup_lat?: number | null
@@ -553,6 +617,7 @@ export type Database = {
         }
         Update: {
           accepted_at?: string | null
+          access_for_all_fee_cents?: number
           canceled_at?: string | null
           commission_cents?: number | null
           commission_rate_bps?: number | null
@@ -568,6 +633,7 @@ export type Database = {
           duration_seconds?: number | null
           fare_cents?: number
           id?: string
+          market?: string
           pickup_address?: string | null
           pickup_geog?: unknown
           pickup_lat?: number | null
@@ -661,6 +727,7 @@ export type Database = {
       active_fare_rate_card: {
         Args: { p_market: string }
         Returns: {
+          access_for_all_fee_cents: number
           active: boolean
           authorization_buffer_bps: number
           base_cents: number
@@ -711,6 +778,10 @@ export type Database = {
           gross_fare_cents: number
           year_month: string
         }[]
+      }
+      driver_online_seconds: {
+        Args: { p_driver_id: string; p_from: string; p_to: string }
+        Returns: number
       }
       release_driver_payout_attempt: {
         Args: { p_payout_id: string }
@@ -879,6 +950,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

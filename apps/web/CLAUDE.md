@@ -136,7 +136,7 @@ decides whether it exists. So `captureRideCharge()` and `payoutRide()` are both 
 - **Stripe's word, not the user's.** The `drivers.stripe_*` columns and every
   `rider_payment_profiles` column sit outside the `authenticated` `UPDATE` grant. Onboarding links
   and SetupIntent secrets are single-use — one per attempt, never cached.
-- **Row shapes are derived from `src/types/database.types.ts`, never restated.** PR #41's deleted bridges briefly reopened for ADR-0022's tables (`UntypedTables` in `src/lib/riders/`/`rides/`, retirable now the generator covers all fourteen); a `text`+CHECK column narrows by hand.
+- **Row shapes are derived from `src/types/database.types.ts`, never restated.** PR #41's deleted bridges briefly reopened for ADR-0022's tables (`UntypedTables` in `src/lib/riders/`/`rides/`); the generator now covers all fourteen and both are retired. A `text`+CHECK column still narrows by hand.
 
 ## Maps
 

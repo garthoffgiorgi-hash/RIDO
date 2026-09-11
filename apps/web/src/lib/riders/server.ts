@@ -11,16 +11,6 @@ import { failed, type RidersResult } from "./result.ts";
  * IS a rider isn't an auth question, it's a profile one.
  */
 
-/**
- * `rider_profiles` (20260904120000) postdates the generated types — the same class of gap
- * `src/lib/rides/server.ts` documents for the same migration set. Delete this the same way once
- * `npm run types:generate` runs against it. Cast at the call site only, never a whole client.
- */
-type UntypedTables = {
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate rider_profiles
-  from: (table: string) => any;
-};
-
 export interface RiderProfile {
   readonly rider_id: string;
   readonly display_name: string | null;
@@ -44,7 +34,7 @@ const PROFILE_COLUMNS =
  * that is not an error.
  */
 export async function getOwnRiderProfile(user: User): Promise<RiderProfile | null> {
-  const supabase = (await createServerClient()) as unknown as UntypedTables;
+  const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("rider_profiles")
     .select(PROFILE_COLUMNS)
@@ -54,7 +44,7 @@ export async function getOwnRiderProfile(user: User): Promise<RiderProfile | nul
   if (error) {
     throw new Error(`getOwnRiderProfile: could not load rider profile — ${error.message}`);
   }
-  return data as RiderProfile | null;
+  return data;
 }
 
 /**
@@ -71,7 +61,7 @@ export async function getOwnRiderProfile(user: User): Promise<RiderProfile | nul
  * one the first time they visit).
  */
 export async function ensureRiderProfile(user: User): Promise<RidersResult<RiderProfile>> {
-  const service = createServiceRoleClient() as unknown as UntypedTables;
+  const service = createServiceRoleClient();
 
   const { data: existing } = await service
     .from("rider_profiles")
@@ -79,7 +69,7 @@ export async function ensureRiderProfile(user: User): Promise<RidersResult<Rider
     .eq("rider_id", user.id)
     .maybeSingle();
 
-  if (existing) return { ok: true, data: existing as RiderProfile };
+  if (existing) return { ok: true, data: existing };
 
   const metadataName = user.user_metadata?.display_name;
   const displayName =
@@ -100,7 +90,7 @@ export async function ensureRiderProfile(user: User): Promise<RidersResult<Rider
         .select(PROFILE_COLUMNS)
         .eq("rider_id", user.id)
         .maybeSingle();
-      if (retried) return { ok: true, data: retried as RiderProfile };
+      if (retried) return { ok: true, data: retried };
     }
     return failed("We couldn't set up your rider profile. Try again in a moment.");
   }
@@ -108,7 +98,7 @@ export async function ensureRiderProfile(user: User): Promise<RidersResult<Rider
     return failed("We couldn't set up your rider profile. Try again in a moment.");
   }
 
-  return { ok: true, data: created as RiderProfile };
+  return { ok: true, data: created };
 }
 
 /**
@@ -130,7 +120,7 @@ export async function setDisplayName(name: string): Promise<RidersResult<null>> 
   const ensured = await ensureRiderProfile(user);
   if (!ensured.ok) return ensured;
 
-  const supabase = (await createServerClient()) as unknown as UntypedTables;
+  const supabase = await createServerClient();
   const { data, error } = await supabase
     .from("rider_profiles")
     .update({ display_name: trimmed })

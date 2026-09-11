@@ -158,11 +158,11 @@ detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-comple
   id alone made a retryable `balance_insufficient` unretryable for up to 24 hours. Same one-
   conditional-`UPDATE`-is-the-lock shape as accept: `WHERE settling = false` (or stale past two
   minutes) is the entire mechanism. (ADR-0016)
-- Regenerate `database.types.ts` after migrations. It now covers ADR-0022's three tables; what is
-  left over is the `UntypedTables` hatch in `apps/web/src/lib/riders/server.ts` and
-  `apps/web/src/lib/rides/server.ts`, retirable as PR #41 retired the last pair.
-  `driver_availability_log` needs no bridge — nothing in `apps/web` reads it.
-  `npm run types:generate` needs Docker, else `--project-id <ref>`; `>` truncates the file first.
+- Regenerate `database.types.ts` after migrations — now current against the live schema,
+  covering `market`, `access_for_all_fee_cents`, and ADR-0022's three tables. The `UntypedTables`
+  hatch in `apps/web/src/lib/riders/server.ts` and `apps/web/src/lib/rides/server.ts` is retired,
+  same as PR #41's own pair. `driver_availability_log` needs no bridge — nothing in `apps/web`
+  reads it. `npm run types:generate` needs Docker, else `--project-id <ref>`; `>` truncates first.
 
 ## Tests (`supabase/tests/`, pgTAP)
 

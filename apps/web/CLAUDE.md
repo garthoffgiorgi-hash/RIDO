@@ -20,9 +20,9 @@ sheets), **Mist** (borders and dividers), **Ink** (primary text), **Slate** (sec
 - White cards on ivory canvas with a 1px Mist border. **Borders and tonal lift, not shadows.**
   This is the signature surface; it does the sleek-but-warm work. Radii: inputs and buttons 12px,
   cards 16–18px, pills 20px+. **Light UI only** — no dark mode unless one is deliberately designed.
-- In-app wordmark is lowercase `rido` with a Signal-blue `i`; uppercase `RIDO` is for the app icon,
-  splash, favicon, and large standalone marks only. Map markers are **Midnight, never a default red
-  pin** — route line Midnight, live driver dot Signal.
+- In-app wordmark and the app icon/splash/favicon are both lowercase `rido` with a Signal-blue `i`;
+  uppercase `RIDO` is for large standalone marks only. Map markers are **Midnight, never a default
+  red pin** — route line Midnight, live driver dot Signal.
 
 ## Structure
 
@@ -152,7 +152,7 @@ runs client-side on the public token, because search isn't money.
   HTTP 200 (`code: "NoRoute"`) and returns floats `quoteFare` throws on; `parseDirectionsBody` handles both, once, tested.
 - `map.ts` is **the only file importing `mapbox-gl`** (rule 7) and returns an opaque
   `RideMapHandle`, never a Mapbox `Map`, so no caller can depend on a vendor detail. Its
-  `--color-midnight` read off `:root` is the one documented exception to "never a hex in a
+  `--color-midnight` read off `:root` is one documented exception to "never a hex in a
   component". `RideMap.tsx` is the only Client Component allowed to reach it.
 - **Search Box results are display-only** — never stored at any price. The storable path
   (`geocode.ts`, Geocoding v6, `permanent=true`, via `resolveStorableCoordinates()`) is built and

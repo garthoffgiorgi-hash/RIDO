@@ -1,3 +1,4 @@
+import { InstallPrompt } from "@/components/domain/InstallPrompt";
 import { MarketingFooter } from "@/components/domain/MarketingFooter";
 import { MarketingNav } from "@/components/domain/MarketingNav";
 
@@ -6,6 +7,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen w-full overflow-x-hidden bg-ivory text-ink">
       <MarketingNav />
+      <InstallPrompt />
       <main>{children}</main>
       <MarketingFooter />
     </div>

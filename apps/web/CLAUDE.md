@@ -55,7 +55,7 @@ puts every route behind Suspense, turning a page-level `redirect()` into a strea
 client navigation — which is why the auth gate is *also* in `proxy.ts`. **`requireUser()` in the
 page remains the security boundary**; the proxy list only buys a clean status, so a miss fails safe.
 
-**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug. **`src/lib/ops/`** composes `payments/`/`payouts/` for ADR-0025's stuck-money sweep, called only from `api/cron/sweep-stuck-money` — no vendor SDK, so it sits outside the domain list above.
+**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug. **`src/lib/ops/`** composes `payments/`/`payouts/` for ADR-0025's stuck-money sweep, called only from `api/cron/sweep-stuck-money` — no vendor SDK, so it sits outside the domain list above. **`src/lib/pwa/`** holds the pure, tested decision behind the install banner (ADR-0027) — same treatment.
 
 ## Auth
 

@@ -13,6 +13,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { type FormEvent, Suspense, useState } from "react";
+import { InstallPrompt } from "@/components/domain/InstallPrompt";
 import { Wordmark } from "@/components/domain/Wordmark";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -330,6 +331,8 @@ function LoginForm() {
           </Link>
           .
         </p>
+
+        <InstallPrompt />
       </div>
     </main>
   );

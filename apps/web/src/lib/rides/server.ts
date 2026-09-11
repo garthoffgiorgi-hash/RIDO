@@ -49,19 +49,6 @@ import { ACTIVE_STATUSES, type RideStatus } from "./status.ts";
 const messageOf = (error: unknown): string =>
   error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 
-/**
- * `rider_profiles` and `driver_public_profiles` (20260904*) postdate the generated types. Same
- * narrow escape hatch this file used for `ride_declines` before its own regeneration retired it
- * (PR #41) — every row it produces is cast to a real shape at the query boundary, so nothing
- * downstream is `any`. Delete it the same way once `npm run types:generate` runs against these
- * three migrations. Cast only at the call site, never the whole `supabase` client — the `rides`
- * queries around it stay fully typed.
- */
-type UntypedTables = {
-  // biome-ignore lint/suspicious/noExplicitAny: the generated types predate rider_profiles/driver_public_profiles
-  from: (table: string) => any;
-};
-
 /** `rating_sum / rating_count`, or `null` with nothing to average yet. Not money — no `@rido/pricing` rounding rule applies; a plain one-decimal round is honest about a 5-star scale. */
 function ratingAverage(count: number, sum: number): number | null {
   return count > 0 ? Math.round((sum / count) * 10) / 10 : null;
@@ -80,7 +67,7 @@ async function readDriverCard(
 ): Promise<DriverCard | null> {
   if (driverId === null || (status !== "accepted" && status !== "in_progress")) return null;
 
-  const { data } = await (supabase as unknown as UntypedTables)
+  const { data } = await supabase
     .from("driver_public_profiles")
     .select("display_name, vehicle_description, vehicle_plate, rating_count, rating_sum")
     .eq("driver_id", driverId)
@@ -107,7 +94,7 @@ async function readRiderCard(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   riderId: string,
 ): Promise<RiderCard | null> {
-  const { data } = await (supabase as unknown as UntypedTables)
+  const { data } = await supabase
     .from("rider_profiles")
     .select("display_name, rating_count, rating_sum")
     .eq("rider_id", riderId)
@@ -255,17 +242,7 @@ export async function requestRide(
   const policy = await getPaymentPolicy(MARKET);
   if (!policy.ok) return { kind: "failed", message: policy.message };
 
-  // `& { market: string }`, not a blanket `as` cast on the whole payload: `market` predates the
-  // generated types the same way rider_profiles/driver_public_profiles/ride_ratings did after
-  // ADR-0022 (apps/web/CLAUDE.md), and this narrows the escape to that one field so a genuine typo
-  // anywhere else in the object is still caught. A blanket `{...} as Insert` was tried and rejected
-  // here — TypeScript's excess-property check never runs on a type-asserted object literal, so it
-  // silently accepted a nonsense field, not only market. Delete the intersection once
-  // `npm run types:generate` runs against this migration.
-  const payload: Database["public"]["Tables"]["rides"]["Insert"] & {
-    market: string;
-    access_for_all_fee_cents: number;
-  } = {
+  const payload: Database["public"]["Tables"]["rides"]["Insert"] = {
     rider_id: user.id,
     driver_id: null,
     market: MARKET,
@@ -284,15 +261,7 @@ export async function requestRide(
   };
 
   const service = createServiceRoleClient();
-  const { data, error } = await service
-    .from("rides")
-    // Cast here, not on `payload` itself: `.insert()` carries its own excess-property check
-    // (Supabase's `RejectExcessProperties`), stricter than a plain structural assignment, and it
-    // rejects `market` before regeneration regardless of how `payload` is typed above. Casting
-    // only this argument keeps that upstream declaration — and its typo protection — intact.
-    .insert(payload as Database["public"]["Tables"]["rides"]["Insert"])
-    .select("id")
-    .single();
+  const { data, error } = await service.from("rides").insert(payload).select("id").single();
 
   if (error) {
     // 23505 is rides_one_active_per_rider — the expected, named conflict. Anything else is not.

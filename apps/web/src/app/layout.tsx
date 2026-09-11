@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Sora, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
@@ -17,6 +17,24 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "RIDO",
   description: "The fair way to move.",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "rido",
+  },
+  other: {
+    // Next's `appleWebApp.capable` only emits the modern unprefixed `mobile-web-app-capable` tag
+    // in this version — some iOS/WebKit releases still key standalone mode off the classic name.
+    "apple-mobile-web-app-capable": "yes",
+  },
+};
+
+// themeColor/colorScheme moved out of Metadata into their own export as of Next 14+.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  themeColor: "#0b2a5b", // Midnight — see manifest.ts's comment on this same exception.
+  colorScheme: "light",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

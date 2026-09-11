@@ -55,12 +55,12 @@ Semantic (derive, keep muted): success → a desaturated green; danger → a war
 
 Two cases, two jobs, one constant accent.
 
-- **RIDO** — uppercase, Signal-blue **I**. The **monument**: app icon, splash, favicon, large standalone marks, anywhere the brand is the subject and needs authority + recognition.
-- **rido** — lowercase, Signal-blue **i**. The **voice**: the brand as a verb, woven into language and product. The **in-app wordmark** (top bar) is lowercase `rido`. In running copy, the word "rido" used as a verb takes the blue i — a tiny recurring spark ("get a rido," "your rido," "rate your rido").
+- **RIDO** — uppercase, Signal-blue **I**. The **monument**: large standalone marks and hero treatments, anywhere the brand is the subject and needs authority + recognition. Not used for the app icon.
+- **rido** — lowercase, Signal-blue **i**. The **voice**: the brand as a verb, woven into language and product. The **in-app wordmark** (top bar) is lowercase `rido`, and the **app icon/splash/favicon** use this same mark too — full-bleed on a solid Midnight tile, same letter-coloring as the in-app wordmark. In running copy, the word "rido" used as a verb takes the blue i — a tiny recurring spark ("get a rido," "your rido," "rate your rido").
 - **The accent is the through-line:** the blue i/I is constant across both cases — the one element that's unmistakably RIDO whether shouting or speaking.
 
 **Creative applications of lowercase:**
-- **Splash motion:** lowercase `rido` appears, the i-dot "pings" (a locate-signal pulse in Signal blue), then resolves into the uppercase `RIDO` icon — voice becoming monument. Use as the cold-open animation.
+- **Splash motion:** lowercase `rido` appears, the i-dot "pings" (a locate-signal pulse in Signal blue), then settles — the same mark the Home Screen icon already shows. Use as the cold-open animation.
 - **Verb in voice (marketing, sparingly):** "let's rido." / "rido there."
 - **Microcopy convention:** wherever product UI says the verb, render `r`+`i`(signal)+`do`. Keep it consistent so the spark reads as systematic, not random.
 

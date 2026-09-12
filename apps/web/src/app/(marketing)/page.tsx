@@ -7,6 +7,7 @@ import {
   MapPin,
   ShieldCheck,
 } from "lucide-react";
+import type { Metadata } from "next";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -34,6 +35,12 @@ const HOW_IT_WORKS = [
     body: "What you saw is what you pay. No hidden markup between you and your driver.",
   },
 ] as const;
+
+export const metadata: Metadata = {
+  title: "rido — Cheaper rides, fairer pay",
+  description:
+    "A fair price for you, a fair cut for your driver. The big apps quietly take up to half of every fare — we built the opposite.",
+};
 
 // Placeholder — rider-facing landing (Design→Code handoff, brand/exports/2026-08-07-landing-pages-v1/).
 export default function RiderLandingPage() {

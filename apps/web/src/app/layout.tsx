@@ -15,8 +15,19 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
+  // Required once any page uses a relative og:image URL (opengraph-image.tsx does) — without it
+  // Next can't resolve one to an absolute URL, which every social platform requires.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
   title: "RIDO",
   description: "The fair way to move.",
+  openGraph: {
+    siteName: "rido",
+    type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

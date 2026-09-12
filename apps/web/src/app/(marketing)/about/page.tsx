@@ -1,8 +1,15 @@
 import { Mail, MapPin, Newspaper } from "lucide-react";
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { commissionTiers, commissionWorkedExample } from "@/lib/marketing/figures";
 import { contact, pilotMonths } from "@/lib/mock-data";
+
+export const metadata: Metadata = {
+  title: "About rido",
+  description:
+    "A ride can be cheaper for you and fairer to your driver at the same time. The only thing standing in the way is how much the middle takes — so we took less.",
+};
 
 // Placeholder — about/mission page (Design→Code handoff, brand/exports/2026-08-07-landing-pages-v1/).
 // Mission copy source: docs/business/overview.md's wedge + mission sections.

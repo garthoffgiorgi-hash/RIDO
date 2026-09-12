@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
+import type { Metadata } from "next";
 import { Avatar } from "@/components/ui/Avatar";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -53,6 +54,11 @@ const HOW_IT_WORKS = [
     body: "A lower, fairer cut means more in your pocket at the end of every month.",
   },
 ] as const;
+
+export const metadata: Metadata = {
+  title: "Drive with rido — Keep more of what you earn",
+  description: `Incumbents take a flat, opaque cut that runs ${incumbentEffectiveTake.range}. Ours drops as you drive — keep ${commissionWorkedExample.monthlyAdvantage} more, every month.`,
+};
 
 // Placeholder — driver-facing landing (Design→Code handoff, brand/exports/2026-08-07-landing-pages-v1/).
 export default function DriverLandingPage() {

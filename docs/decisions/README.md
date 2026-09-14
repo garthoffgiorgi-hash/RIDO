@@ -55,6 +55,7 @@ What this costs, what it rules out, what now has to be true.
 | [0025](0025-stuck-money-sweep.md) | A scheduled sweep retries what completion swallowed, never a terminal row | Accepted |
 | [0026](0026-rides-live-kill-switch.md) | A fail-safe switch stops the app operating as a TNC before it's licensed | Accepted |
 | [0027](0027-install-prompt-service-worker.md) | A service worker exists, and it does nothing but forward requests | Accepted |
+| [0028](0028-waitlist-anonymous-write.md) | Anonymous writes go through the service role, with zero grants as the RLS | Accepted |
 
 This index went un-updated from 0015 through 0018 while those decisions merged, which is why the
 rule is worth stating: **the row goes in the same commit as the ADR.** `check-context.mjs` cannot

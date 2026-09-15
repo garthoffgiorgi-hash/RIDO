@@ -6,7 +6,7 @@ never edit a migration that has been applied — add a new one.
 Tables: `drivers` · `subscriptions` · `rides` · `driver_monthly_stats` · `driver_payouts` ·
 `ride_charges` · `rider_payment_profiles` · `ride_declines` · `driver_availability_log` ·
 `commission_tiers` · `fare_rate_cards` · `rider_profiles` · `driver_public_profiles` ·
-`ride_ratings`. Field-level
+`ride_ratings` · `waitlist_signups`. Field-level
 detail: `docs/architecture/data-model.md`. Flows: `docs/architecture/ride-completion.md` ·
 `docs/architecture/payouts.md` · `docs/architecture/rider-charging.md`.
 

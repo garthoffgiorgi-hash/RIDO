@@ -55,7 +55,7 @@ puts every route behind Suspense, turning a page-level `redirect()` into a strea
 client navigation — which is why the auth gate is *also* in `proxy.ts`. **`requireUser()` in the
 page remains the security boundary**; the proxy list only buys a clean status, so a miss fails safe.
 
-**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug. **`src/lib/ops/`** composes `payments/`/`payouts/` for ADR-0025's stuck-money sweep, called only from `api/cron/sweep-stuck-money` — no vendor SDK, so it sits outside the domain list above. **`src/lib/pwa/`** holds the pure, tested decision behind the install banner (ADR-0027), **`src/lib/waitlist/`** the pre-launch lead capture (ADR-0028), and **`src/lib/navigation/`** the driver's Maps hand-off URL — same treatment, all three. Device detection (`detectPlatform`) lives in `src/lib/platform.ts`, a shared non-domain util both `pwa/` and `navigation/` import.
+**There is no `src/lib/pricing/`.** Money math is `@rido/pricing`; arithmetic on a fare here is a bug. **`src/lib/ops/`** composes `payments/`/`payouts/` for ADR-0025's stuck-money sweep, called only from `api/cron/sweep-stuck-money` — no vendor SDK, so it sits outside the domain list above. **`src/lib/pwa/`** holds the pure, tested decision behind the install banner (ADR-0027), **`src/lib/waitlist/`** the pre-launch lead capture (ADR-0028), and **`src/lib/navigation/`** the driver's Maps hand-off URL — same treatment, all three. Device detection (`detectPlatform`) lives in `src/lib/platform.ts`, a shared non-domain util both `pwa/` and `navigation/` import; `src/lib/geolocation.ts` is the same kind of util, for the driver's one-shot position fix on `/drive`.
 
 ## Auth
 

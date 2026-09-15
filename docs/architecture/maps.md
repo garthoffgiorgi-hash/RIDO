@@ -120,14 +120,18 @@ at all): `../decisions/0011-what-a-completed-ride-records.md`.
 
 `apps/web/src/lib/maps/map.ts` is the only file in the repo importing `mapbox-gl`, enforced by
 `scripts/check-context.mjs` rule 7. It exports `createRideMap()`, which returns an opaque
-`RideMapHandle` (`setPickup`, `setDropoff`, `drawRoute`, `fitToRoute`, `destroy`) rather than a
-Mapbox `Map` instance — the same "no vendor shape crosses the boundary" rule `types.ts` states for
-`Place` and `RouteMeasurement`, held on the rendering side too. `mapbox-gl` is dynamically
-imported so it can never land in a server bundle.
+`RideMapHandle` (`setPickup`, `setDropoff`, `setDriverPosition`, `drawRoute`, `fitToRoute`,
+`destroy`) rather than a Mapbox `Map` instance — the same "no vendor shape crosses the boundary"
+rule `types.ts` states for `Place` and `RouteMeasurement`, held on the rendering side too.
+`mapbox-gl` is dynamically imported so it can never land in a server bundle.
 
-Markers are Midnight DOM elements, not Mapbox's default pin (`brand/design-system.md`). The route
-line is a GL layer, whose `line-color` paint property needs a literal colour rather than a CSS
-variable — the one documented exception to "never a hex in a component" in
+Markers are DOM elements, not Mapbox's default pin (`brand/design-system.md`): Midnight for pickup
+and dropoff, **Signal for the driver's own live position** — the design system's "live car/driver
+dot in Signal", built for the first time on `/drive`. The fix behind it is one-shot, never
+continuous (`apps/web/src/lib/geolocation.ts`, the codebase's first `navigator.geolocation` call),
+so `fitToRoute()`'s re-fit-on-every-prop-change behaviour stays harmless — it only ever fires once
+per marker. The route line is a GL layer, whose `line-color` paint property needs a literal colour
+rather than a CSS variable — the one documented exception to "never a hex in a component" in
 `apps/web/CLAUDE.md`, scoped to this file alone; it reads `--color-midnight` off `:root` at
 runtime rather than hardcoding it a second time.
 
@@ -137,7 +141,16 @@ zero-area box. It's tested directly; `map.ts` itself is vendor glue that needs a
 looking at the screen rather than by a unit test, per ADR-0007's carve-out for that kind of code.
 
 `apps/web/src/components/domain/RideMap.tsx` is the Client Component boundary — it owns the container ref
-and the mount/unmount lifecycle, and receives only app types (`Coordinates`, `RouteGeometry`).
+and the mount/unmount lifecycle, and receives only app types (`Coordinates`, `RouteGeometry`,
+and now `driverPosition: Coordinates | null` for the third marker above).
+
+**The driver's route preview, on `/drive`.** `rides.getDriverRoute()`
+(`apps/web/src/lib/rides/server.ts`) takes the driver's own one-shot position and calls
+`measureRoute()` against whichever end of the ride they're currently headed to
+(`driverDestination()`, shared with the Navigate button so the two can't disagree about where
+that is). Same server-only trust boundary as `quoteRideRequest()` — display, not a fare, but
+still never measured client-side. `null` (not a failure) covers every ride with nothing to draw a
+line to: no stored coordinate for that end, or no active ride at all.
 
 `apps/web/src/app/dev/maps/` is the proving ground: two debounced place searches
 (`searchPlaces()`), a server action (`actions.ts`) that calls `measureRoute()` then

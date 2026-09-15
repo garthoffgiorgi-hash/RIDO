@@ -18,7 +18,7 @@ import type { DriverProfile } from "@/lib/drivers/status.ts";
 import { getPaymentPolicy, quoteRide } from "@/lib/fares/server";
 import { ensureRiderProfile } from "@/lib/riders/server.ts";
 import { measureRoute, resolveStorableCoordinates } from "@/lib/maps/server.ts";
-import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
+import type { Coordinates, Place, RouteGeometry, RouteMeasurement } from "@/lib/maps/types.ts";
 import {
   authorizeRideCharge,
   chargeCancellationFee,
@@ -32,6 +32,7 @@ import { canAcceptRide, type OpenRide } from "./accept.ts";
 import { cancellationOutcome } from "./cancellation.ts";
 import { coordinateColumns, NO_STORED_COORDINATES, shouldStoreCoordinates } from "./coordinates.ts";
 import { completionErrorMessage } from "./completion-errors.ts";
+import { driverDestination } from "./destination.ts";
 import { RIDES_NOT_LIVE_MESSAGE, ridesAreLive } from "./live.ts";
 import { failed, type RidesResult } from "./result.ts";
 import { canStartTrip, type StartableRide } from "./start.ts";
@@ -875,6 +876,37 @@ export async function getDriverActiveRide(
       rider: await readRiderCard(supabase, ride.rider_id),
     },
   };
+}
+
+/**
+ * The driver's live route to wherever they're headed right now — the pickup while accepted, the
+ * dropoff once in progress (`driverDestination`, the same decision the Navigate button uses, so
+ * the map preview and the deep link can never disagree about the destination).
+ *
+ * Resolves the driver's *own* active ride server-side rather than trusting a ride id from the
+ * client — the same reason `getDriverActiveRide` takes a `DriverProfile`, not a ride argument, and
+ * `rides_one_active_per_driver` is what makes that resolution exact.
+ *
+ * `data: null` (not a failure) covers everything that means "nothing to draw a line to yet": no
+ * active ride, or a ride whose relevant end has no stored coordinate — every ride booked before
+ * ADR-0029, or one whose geocode failed. The map preview just shows no route in that case; the
+ * Navigate button already falls back to the address for the identical reason.
+ */
+export async function getDriverRoute(
+  driver: DriverProfile,
+  driverPosition: Coordinates,
+): Promise<RidesResult<RouteMeasurement | null>> {
+  const ride = await getDriverActiveRide(driver);
+  if (!ride.ok) return ride;
+  if (!ride.data) return { ok: true, data: null };
+
+  const destination = driverDestination(ride.data);
+  if (!destination.coordinates) return { ok: true, data: null };
+
+  // measureRoute's MapsResult and RidesResult are structurally identical (ADR-0006: one Result
+  // type per domain, deliberately not shared) — this is display, not a snapshot, so passing one
+  // through as the other costs nothing money-relevant.
+  return measureRoute(driverPosition, destination.coordinates);
 }
 
 /**

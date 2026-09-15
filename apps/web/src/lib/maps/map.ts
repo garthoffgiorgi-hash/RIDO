@@ -39,9 +39,15 @@ function themeColor(name: string, fallback: string): string {
 export interface RideMapHandle {
   setPickup(at: Coordinates | null): void;
   setDropoff(at: Coordinates | null): void;
+  /**
+   * A third marker, Signal-colored per `brand/design-system.md`'s "live car/driver dot in
+   * Signal" — distinct from the Midnight pickup/dropoff pins. `null` clears it. One-shot: nothing
+   * here re-fixes this on a timer, so it holds still until a caller calls this again.
+   */
+  setDriverPosition(at: Coordinates | null): void;
   /** Draws (or clears, when passed `null`) the route line. Display only — never priced. */
   drawRoute(geometry: RouteGeometry | null): void;
-  /** Frames the camera on whatever pickup/dropoff/route is currently set. No-op if nothing is. */
+  /** Frames the camera on whatever pickup/dropoff/driver position/route is currently set. No-op if nothing is. */
   fitToRoute(): void;
   /** Tears down the map instance and its event listeners. Call from a cleanup effect. */
   destroy(): void;
@@ -80,11 +86,13 @@ export async function createRideMap(options: CreateRideMapOptions): Promise<Ride
 
   let pickupMarker: Marker | null = null;
   let dropoffMarker: Marker | null = null;
+  let driverMarker: Marker | null = null;
   let currentGeometry: RouteGeometry | null = null;
   let styleLoaded = false;
   let destroyed = false;
 
   const midnight = themeColor("--color-midnight", "#0b2a5b");
+  const signal = themeColor("--color-signal", "#2a5bff");
 
   // The route line is a GL layer, which only exists once the style has finished loading — an
   // earlier drawRoute() call is remembered in currentGeometry and applied once it's ready.
@@ -116,13 +124,13 @@ export async function createRideMap(options: CreateRideMapOptions): Promise<Ride
     source?.setData(geometry ? lineFeatureCollection(geometry) : emptyFeatureCollection());
   }
 
-  function makeMarker(): Marker {
+  function makeMarker(color: string): Marker {
     const el = document.createElement("div");
     el.className = "rido-map-marker";
     el.style.width = "16px";
     el.style.height = "16px";
     el.style.borderRadius = "50%";
-    el.style.background = midnight;
+    el.style.background = color;
     el.style.border = "2px solid white";
     el.style.boxShadow = "0 1px 4px rgba(11, 42, 91, 0.4)";
     return new mapboxgl.Marker({ element: el });
@@ -131,11 +139,15 @@ export async function createRideMap(options: CreateRideMapOptions): Promise<Ride
   return {
     setPickup(at) {
       pickupMarker?.remove();
-      pickupMarker = at ? makeMarker().setLngLat(toLngLat(at)).addTo(map) : null;
+      pickupMarker = at ? makeMarker(midnight).setLngLat(toLngLat(at)).addTo(map) : null;
     },
     setDropoff(at) {
       dropoffMarker?.remove();
-      dropoffMarker = at ? makeMarker().setLngLat(toLngLat(at)).addTo(map) : null;
+      dropoffMarker = at ? makeMarker(midnight).setLngLat(toLngLat(at)).addTo(map) : null;
+    },
+    setDriverPosition(at) {
+      driverMarker?.remove();
+      driverMarker = at ? makeMarker(signal).setLngLat(toLngLat(at)).addTo(map) : null;
     },
     drawRoute(geometry) {
       currentGeometry = geometry;
@@ -145,6 +157,7 @@ export async function createRideMap(options: CreateRideMapOptions): Promise<Ride
       const points: Coordinates[] = [];
       if (pickupMarker) points.push(fromLngLat(pickupMarker.getLngLat()));
       if (dropoffMarker) points.push(fromLngLat(dropoffMarker.getLngLat()));
+      if (driverMarker) points.push(fromLngLat(driverMarker.getLngLat()));
       if (points.length === 0) return;
 
       void import("./map-geometry.ts").then(({ boundsForCoordinates, boundsForGeometry }) => {
@@ -164,6 +177,7 @@ export async function createRideMap(options: CreateRideMapOptions): Promise<Ride
       destroyed = true;
       pickupMarker?.remove();
       dropoffMarker?.remove();
+      driverMarker?.remove();
       map.remove();
     },
   };

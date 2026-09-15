@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth/server";
 import * as drivers from "@/lib/drivers/server";
+import type { Coordinates } from "@/lib/maps/types.ts";
 import * as payments from "@/lib/payments/server";
 import * as payouts from "@/lib/payouts/server";
 import * as ratings from "@/lib/ratings/server";
@@ -140,5 +141,24 @@ export async function readDriverActiveRide() {
   if (!driver) return null;
 
   const result = await rides.getDriverActiveRide(driver);
+  return result.ok ? result.data : null;
+}
+
+/**
+ * The route line plus distance/ETA from the driver's own position to wherever they're headed —
+ * what the map preview calls after a one-shot geolocation fix. `driverPosition` is the only thing
+ * that comes from the client; which ride and which end of it are resolved server-side from the
+ * signed-in driver, same as `readDriverActiveRide`.
+ *
+ * `null` on a driver-profile miss, no active ride, no stored coordinate for the relevant end, or a
+ * Mapbox failure — all four degrade the same way from here: no route to draw. The map preview
+ * still shows the driver's own dot, and the Navigate button doesn't depend on this at all.
+ */
+export async function getDriverRoute(driverPosition: Coordinates) {
+  const user = await requireUser();
+  const driver = await drivers.getOwnDriverProfile(user);
+  if (!driver) return null;
+
+  const result = await rides.getDriverRoute(driver, driverPosition);
   return result.ok ? result.data : null;
 }

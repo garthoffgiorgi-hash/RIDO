@@ -4,16 +4,21 @@ import { BPS_DENOMINATOR } from "@rido/pricing";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { RatingPrompt } from "@/components/domain/RatingPrompt";
+import { RideMap } from "@/components/domain/RideMap";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fare, formatCents } from "@/components/ui/Fare";
+import { getCurrentPosition } from "@/lib/geolocation.ts";
+import type { Coordinates, RouteMeasurement } from "@/lib/maps/types.ts";
 import { buildNavigationUrl } from "@/lib/navigation/deep-link.ts";
 import { detectPlatform, type Platform } from "@/lib/platform.ts";
+import { driverDestination } from "@/lib/rides/destination.ts";
 import { subscribeToRide } from "@/lib/rides/realtime";
 import type { DriverActiveRide, RideCompletion } from "@/lib/rides/server";
 import {
   completeRide,
+  getDriverRoute,
   getRatingStatus,
   readDriverActiveRide,
   startTrip,
@@ -24,6 +29,10 @@ const formatKeepPct = (commissionRateBps: number) =>
   new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 0 }).format(
     (BPS_DENOMINATOR - commissionRateBps) / BPS_DENOMINATOR,
   );
+
+// Mirrors DevMapsPanel's own formatters exactly — a display-only distance/ETA, never priced.
+const formatDistance = (meters: number) => `${(meters / 1609.344).toFixed(1)} mi`;
+const formatEta = (seconds: number) => `${Math.max(1, Math.round(seconds / 60))} min away`;
 
 /**
  * The driver's own live ride — accepted, in progress, or (briefly) just completed. This is the
@@ -48,6 +57,11 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
   // `ready` flag exists. Defaults to "other" (routes to Google Maps' universal web link, which
   // works regardless of platform), never blocking the button on the detection running first.
   const [platform, setPlatform] = useState<Platform>("other");
+  // One-shot (`src/lib/geolocation.ts`) — a driver who opens this panel gets a single position
+  // fix, not continuous tracking. `null` until it resolves, and forever if denied or unsupported;
+  // either way the card below degrades to no map rather than an error.
+  const [driverPosition, setDriverPosition] = useState<Coordinates | null>(null);
+  const [route, setRoute] = useState<RouteMeasurement | null>(null);
 
   const actionInFlight = useRef(false);
   actionInFlight.current = busy;
@@ -61,6 +75,36 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
       }),
     );
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentPosition().then((result) => {
+      if (!cancelled && result.ok) setDriverPosition(result.data);
+      // A denial or a failure leaves driverPosition null — no map, nothing else on this panel
+      // depends on it, so there's no error state to show for it.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-measures when the fix arrives and again if the ride's status flips (pickup -> dropoff),
+  // using the same one-time position both times — never a second geolocation request. Keyed on
+  // status rather than the ride object itself so a rider-name or fare change doesn't re-fire this.
+  const rideStatus = ride?.status ?? null;
+  useEffect(() => {
+    if (!driverPosition || !rideStatus) {
+      setRoute(null);
+      return;
+    }
+    let cancelled = false;
+    getDriverRoute(driverPosition).then((result) => {
+      if (!cancelled) setRoute(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [driverPosition, rideStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,15 +209,33 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
   // headed at each stage. Prefers the stored coordinate (ADR-0029); falls back to the address
   // string for a ride booked before that flag was on, which is what makes this work for every
   // ride rather than only new ones. `null` — neither a coordinate nor an address exists — means
-  // no button, not a broken link.
-  const destination =
-    ride.status === "accepted"
-      ? { coordinates: ride.pickupCoordinates, address: ride.pickupAddress }
-      : { coordinates: ride.dropoffCoordinates, address: ride.dropoffAddress };
+  // no button, not a broken link. Shared with the map preview below via `driverDestination` so
+  // the two can never point at different places.
+  const destination = driverDestination(ride);
   const navigationUrl = buildNavigationUrl(destination, platform);
 
   return (
     <Card className="space-y-3">
+      {/* Only when there's an actual coordinate to show — a map centered on nothing (every ride
+          booked before ADR-0029, or a failed geocode) is worse than no map, and the Navigate
+          button above doesn't depend on this at all. */}
+      {destination.coordinates && (
+        <div className="space-y-1">
+          <RideMap
+            pickup={ride.pickupCoordinates}
+            dropoff={ride.dropoffCoordinates}
+            driverPosition={driverPosition}
+            route={route?.geometry ?? null}
+            className="h-40"
+          />
+          {route && (
+            <p className="tabular text-[13px] text-slate">
+              {formatDistance(route.distanceMeters)} · {formatEta(route.durationSeconds)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* The mirror of RequestPanel's driver card, and its first real render: who a driver is
           about to pick up. A null displayName (no name set yet) falls back to "Your rider" rather
           than rendering nothing — the pickup/dropoff lines below already do the same for a

@@ -17,6 +17,8 @@ import type { Coordinates, RouteGeometry } from "@/lib/maps/types.ts";
 export interface RideMapProps {
   readonly pickup?: Coordinates | null;
   readonly dropoff?: Coordinates | null;
+  /** The driver's own live position, one-shot (`src/lib/geolocation.ts`) — a third, Signal-colored marker. */
+  readonly driverPosition?: Coordinates | null;
   readonly route?: RouteGeometry | null;
   /**
    * `"card"` (default) — the original `/dev/maps` shape: rounded on all four corners, sized by
@@ -32,6 +34,7 @@ export interface RideMapProps {
 export function RideMap({
   pickup = null,
   dropoff = null,
+  driverPosition = null,
   route = null,
   shape = "card",
   className,
@@ -69,18 +72,19 @@ export function RideMap({
   }, []);
 
   // One effect for every prop, rather than one per prop: `fitToRoute()` needs to run after
-  // whichever of pickup/dropoff/route just changed, so splitting them apart would mean either
-  // fitting on stale state or coordinating across effects. All four values are read directly in
-  // the body, so this has nothing to suppress on the exhaustive-deps rule.
+  // whichever of pickup/dropoff/driverPosition/route just changed, so splitting them apart would
+  // mean either fitting on stale state or coordinating across effects. All five values are read
+  // directly in the body, so this has nothing to suppress on the exhaustive-deps rule.
   useEffect(() => {
     if (!ready) return;
     const handle = handleRef.current;
     if (!handle) return;
     handle.setPickup(pickup);
     handle.setDropoff(dropoff);
+    handle.setDriverPosition(driverPosition);
     handle.drawRoute(route);
-    if (pickup || dropoff) handle.fitToRoute();
-  }, [ready, pickup, dropoff, route]);
+    if (pickup || dropoff || driverPosition) handle.fitToRoute();
+  }, [ready, pickup, dropoff, driverPosition, route]);
 
   const shapeClasses =
     shape === "bleed" ? "absolute inset-0" : "relative overflow-hidden rounded-card";

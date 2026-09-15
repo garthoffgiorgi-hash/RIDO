@@ -1,29 +1,15 @@
+import type { Platform } from "@/lib/platform.ts";
+
 /**
  * The install-banner decision (ADR-0027). Pure — takes what the browser already told the caller,
  * decides nothing about how to read it, so it's testable without a DOM.
  *
- * `detectPlatform` exists because the two platforms need genuinely different UI: iOS exposes no
- * API to trigger "Add to Home Screen" programmatically, so it only ever gets instructions;
- * Android can fire a real `beforeinstallprompt` for a one-tap button. iPadOS 13+ reports as
- * desktop Safari with no "iPad" anywhere in the user agent — `maxTouchPoints` on a `MacIntel`
- * platform string is the standard way to still catch it (a real Mac with a mouse reports 0).
+ * `Platform`/`detectPlatform` moved to `src/lib/platform.ts` once driver navigation needed the
+ * identical iOS-vs-Android distinction for a different reason — the two platforms need genuinely
+ * different UI here too: iOS exposes no API to trigger "Add to Home Screen" programmatically, so
+ * it only ever gets instructions; Android can fire a real `beforeinstallprompt` for a one-tap
+ * button.
  */
-export type Platform = "ios" | "android" | "other";
-
-export interface PlatformSignals {
-  readonly userAgent: string;
-  readonly platform: string; // navigator.platform, e.g. "MacIntel", "Linux armv8l"
-  readonly maxTouchPoints: number; // navigator.maxTouchPoints
-}
-
-export function detectPlatform(signals: PlatformSignals): Platform {
-  const isIOSUserAgent = /iPhone|iPad|iPod/.test(signals.userAgent);
-  const isSpoofedIPad = signals.platform === "MacIntel" && signals.maxTouchPoints > 1;
-  if (isIOSUserAgent || isSpoofedIPad) return "ios";
-  if (/Android/.test(signals.userAgent)) return "android";
-  return "other";
-}
-
 export type InstallPromptVariant = "none" | "ios-instructions" | "android-install";
 
 export interface InstallPromptState {

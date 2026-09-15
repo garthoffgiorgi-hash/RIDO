@@ -56,6 +56,15 @@ function ratingAverage(count: number, sum: number): number | null {
 }
 
 /**
+ * `null` unless both halves of the pair are present. `coordinateColumns()` (ADR-0029) always
+ * writes lat and lng for one end together — never one without the other — but this reads
+ * straight from the row rather than assuming that invariant holds forever.
+ */
+function coordinatesFromColumns(lat: number | null, lng: number | null): Coordinates | null {
+  return lat !== null && lng !== null ? { lat, lng } : null;
+}
+
+/**
  * Reads the driver card a rider's live-ride sheet shows, authorized by
  * `driver_public_profiles_select_as_active_rider` — the caller must already be that ride's own
  * rider for the read to return anything at all. `null` on a `'requested'` ride (no driver_id yet),
@@ -793,6 +802,13 @@ export interface DriverActiveRide {
   readonly status: "accepted" | "in_progress";
   readonly pickupAddress: string | null;
   readonly dropoffAddress: string | null;
+  /**
+   * Null on any ride booked before ADR-0029's flag was on, or whenever that end's geocode
+   * failed — never fabricated from the address. A caller that wants to navigate falls back to
+   * the address string when this is null; that's what makes navigation work for older rides too.
+   */
+  readonly pickupCoordinates: Coordinates | null;
+  readonly dropoffCoordinates: Coordinates | null;
   readonly fareCents: number;
   readonly driverPayoutCents: number;
   readonly commissionRateBps: number;
@@ -817,7 +833,9 @@ export async function getDriverActiveRide(
   const supabase = await createServerClient();
   const { data: ride, error } = await supabase
     .from("rides")
-    .select("id, status, rider_id, fare_cents, pickup_address, dropoff_address, started_at")
+    .select(
+      "id, status, rider_id, fare_cents, pickup_address, dropoff_address, started_at, pickup_lat, pickup_lng, dropoff_lat, dropoff_lng",
+    )
     .eq("driver_id", driver.id)
     .in("status", ["accepted", "in_progress"])
     .maybeSingle();
@@ -848,6 +866,8 @@ export async function getDriverActiveRide(
       status: ride.status as "accepted" | "in_progress",
       pickupAddress: ride.pickup_address,
       dropoffAddress: ride.dropoff_address,
+      pickupCoordinates: coordinatesFromColumns(ride.pickup_lat, ride.pickup_lng),
+      dropoffCoordinates: coordinatesFromColumns(ride.dropoff_lat, ride.dropoff_lng),
       fareCents: ride.fare_cents,
       driverPayoutCents,
       commissionRateBps,

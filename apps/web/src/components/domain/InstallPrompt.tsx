@@ -4,7 +4,8 @@ import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { detectPlatform, installPromptVariant, type Platform } from "@/lib/pwa/install-prompt";
+import { detectPlatform, type Platform } from "@/lib/platform.ts";
+import { installPromptVariant } from "@/lib/pwa/install-prompt";
 
 /**
  * Chrome's non-standard extension to `Event` — never made it into `lib.dom.d.ts`. Named locally

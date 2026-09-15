@@ -8,6 +8,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Fare, formatCents } from "@/components/ui/Fare";
+import { buildNavigationUrl } from "@/lib/navigation/deep-link.ts";
+import { detectPlatform, type Platform } from "@/lib/platform.ts";
 import { subscribeToRide } from "@/lib/rides/realtime";
 import type { DriverActiveRide, RideCompletion } from "@/lib/rides/server";
 import {
@@ -42,9 +44,23 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
   // 'accepted' to 'in_progress' without a reload. `null` means the ride is gone out from under
   // this driver — the rider cancelled (ADR-0018 made that possible at every live status).
   const [ride, setRide] = useState<DriverActiveRide | null>(initialRide);
+  // Detected client-side only — the server render can't know it, same reason InstallPrompt's
+  // `ready` flag exists. Defaults to "other" (routes to Google Maps' universal web link, which
+  // works regardless of platform), never blocking the button on the detection running first.
+  const [platform, setPlatform] = useState<Platform>("other");
 
   const actionInFlight = useRef(false);
   actionInFlight.current = busy;
+
+  useEffect(() => {
+    setPlatform(
+      detectPlatform({
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        maxTouchPoints: navigator.maxTouchPoints,
+      }),
+    );
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +161,17 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
 
   const riderName = ride.rider?.displayName ?? "Your rider";
 
+  // The pickup while accepted, the dropoff once in progress — the one place a driver is actually
+  // headed at each stage. Prefers the stored coordinate (ADR-0029); falls back to the address
+  // string for a ride booked before that flag was on, which is what makes this work for every
+  // ride rather than only new ones. `null` — neither a coordinate nor an address exists — means
+  // no button, not a broken link.
+  const destination =
+    ride.status === "accepted"
+      ? { coordinates: ride.pickupCoordinates, address: ride.pickupAddress }
+      : { coordinates: ride.dropoffCoordinates, address: ride.dropoffAddress };
+  const navigationUrl = buildNavigationUrl(destination, platform);
+
   return (
     <Card className="space-y-3">
       {/* The mirror of RequestPanel's driver card, and its first real render: who a driver is
@@ -167,6 +194,22 @@ export function CurrentRidePanel({ ride: initialRide }: { ride: DriverActiveRide
         <p className="truncate">{ride.pickupAddress ?? "Pickup"}</p>
         <p className="truncate">{ride.dropoffAddress ?? "Dropoff"}</p>
       </div>
+
+      {navigationUrl && (
+        // A plain <a>, not <Button href>: it needs target="_blank" so a Maps hand-off that
+        // resolves to a browser tab (no app installed, or on desktop) leaves this ride open in
+        // the background rather than navigating the driver's own app away from it. Button's link
+        // variant doesn't expose target, and widening a shared primitive for this one caller
+        // isn't worth it yet.
+        <a
+          href={navigationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex h-14 w-full items-center justify-center gap-2 whitespace-nowrap rounded-input border border-mist bg-white px-7 text-base font-bold text-ink transition-[transform,background-color] duration-150 ease-standard hover:bg-ivory active:scale-[0.98] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-signal/50"
+        >
+          Navigate
+        </a>
+      )}
 
       <div>
         <Fare cents={ride.driverPayoutCents} />

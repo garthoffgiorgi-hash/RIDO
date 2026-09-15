@@ -29,7 +29,8 @@ instant it is taken. Not built: dispatch or proximity matching.
 3. **Confirm.** `requestRide(pickup, dropoff, shownFareCents)` **re-measures and re-quotes from
    scratch**, ignoring what the browser is holding except to compare against it.
    - Fresh fare equals `shownFareCents` → insert. `driver_id: null`, `status: 'requested'`,
-     addresses stored, coordinates left null (ADR-0011).
+     addresses stored, and — when `STORE_RIDE_COORDINATES` is set — a storable coordinate per end,
+     geocoded best-effort as the last step before the insert (ADR-0029).
    - Fresh fare disagrees → nothing is written. The new quote comes back; the rider re-confirms.
    - Either way, the number that reaches the row is always the one computed in this step, never
      the one the argument carries.
@@ -172,8 +173,9 @@ have a ride in progress" — the same shape the rider side uses.
   `rides_driver_present_unless_pending` enforces this in the database, not just in application code.
 - At most one row per rider has `status` in `('requested', 'accepted', 'in_progress')` at a time;
   at most one row per driver has `status` in `('accepted', 'in_progress')` at a time.
-- `pickup_lat`/`pickup_lng`/`dropoff_lat`/`dropoff_lng` stay null through this flow — ADR-0011's
-  deferral, unaffected by anything here.
+- `pickup_lat`/`pickup_lng`/`dropoff_lat`/`dropoff_lng` are null unless `STORE_RIDE_COORDINATES`
+  is set, and null per-end whenever that end's geocode failed — a booking never fails over one
+  (ADR-0029, turning on ADR-0011's deferral).
 - A rider can cancel only their own ride, and only while it is `'requested'` — checked against the
   database on every call, not assumed from what the UI happened to render.
 - A driver may accept only while `status = 'requested'` and `driver_id is null`, and only if their

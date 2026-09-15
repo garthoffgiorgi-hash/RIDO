@@ -17,7 +17,7 @@ import { getOwnDriverProfile } from "@/lib/drivers/server.ts";
 import type { DriverProfile } from "@/lib/drivers/status.ts";
 import { getPaymentPolicy, quoteRide } from "@/lib/fares/server";
 import { ensureRiderProfile } from "@/lib/riders/server.ts";
-import { measureRoute } from "@/lib/maps/server.ts";
+import { measureRoute, resolveStorableCoordinates } from "@/lib/maps/server.ts";
 import type { Coordinates, Place, RouteGeometry } from "@/lib/maps/types.ts";
 import {
   authorizeRideCharge,
@@ -30,6 +30,7 @@ import { createServerClient, createServiceRoleClient } from "@/lib/supabase/serv
 import type { Database } from "@/types/database.types";
 import { canAcceptRide, type OpenRide } from "./accept.ts";
 import { cancellationOutcome } from "./cancellation.ts";
+import { coordinateColumns, NO_STORED_COORDINATES, shouldStoreCoordinates } from "./coordinates.ts";
 import { completionErrorMessage } from "./completion-errors.ts";
 import { RIDES_NOT_LIVE_MESSAGE, ridesAreLive } from "./live.ts";
 import { failed, type RidesResult } from "./result.ts";
@@ -187,6 +188,32 @@ export type RequestRideOutcome =
   | { readonly kind: "failed"; readonly message: string };
 
 /**
+ * Best-effort storable coordinates for both ends of a booking (ADR-0029).
+ *
+ * **Nothing in here may fail a booking.** Every path returns columns — the flag being off, a
+ * refusal (a dropped pin has no address to geocode), a Mapbox timeout, or an exception escaping
+ * the fetch. `coordinateColumns()` holds the rule that a failure writes null rather than a guess;
+ * this function is only the I/O around it.
+ *
+ * Both ends resolve in parallel, and independently: a pickup that can't be geocoded doesn't cost
+ * the dropoff its coordinate. `Promise.allSettled` rather than `all` is what guarantees that —
+ * `all` would discard a good answer alongside a bad one.
+ */
+async function storableCoordinates(pickup: Place, dropoff: Place) {
+  if (!shouldStoreCoordinates()) return NO_STORED_COORDINATES;
+
+  const [resolvedPickup, resolvedDropoff] = await Promise.allSettled([
+    resolveStorableCoordinates(pickup),
+    resolveStorableCoordinates(dropoff),
+  ]);
+
+  return coordinateColumns(
+    resolvedPickup.status === "fulfilled" ? resolvedPickup.value : null,
+    resolvedDropoff.status === "fulfilled" ? resolvedDropoff.value : null,
+  );
+}
+
+/**
  * Books a ride, or explains why it didn't book.
  *
  * Re-measures and re-prices from scratch rather than trusting anything the browser is holding —
@@ -242,6 +269,12 @@ export async function requestRide(
   const policy = await getPaymentPolicy(MARKET);
   if (!policy.ok) return { kind: "failed", message: policy.message };
 
+  // Deliberately the last thing before the insert, not the first thing after the quote: every
+  // early return above (price moved, no card, no policy) is a booking that never happens, and
+  // this is the one step that bills a card. Spending on it before those checks would pay for
+  // rides that don't exist.
+  const coordinates = await storableCoordinates(pickup, dropoff);
+
   const payload: Database["public"]["Tables"]["rides"]["Insert"] = {
     rider_id: user.id,
     driver_id: null,
@@ -258,6 +291,10 @@ export async function requestRide(
     access_for_all_fee_cents: accessForAllCents(quote.data),
     pickup_address: pickup.address,
     dropoff_address: dropoff.address,
+    // ADR-0029. Null on every row until STORE_RIDE_COORDINATES is set, and null per-end whenever
+    // a geocode failed — `pickup_geog`/`dropoff_geog` are generated from these and populate
+    // themselves the moment a real pair lands.
+    ...coordinates,
   };
 
   const service = createServiceRoleClient();

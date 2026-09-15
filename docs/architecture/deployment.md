@@ -28,6 +28,7 @@ adding it after a build means redeploying, not just saving.
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Runtime | The webhook secret is **per endpoint** — the deployed endpoint's own signing secret, not the one from `stripe listen` |
 | `CRON_SECRET` | Runtime | ADR-0025. Missing = the sweep endpoint refuses every call, never the reverse |
 | `RIDES_LIVE` | Runtime | ADR-0026. Missing or anything but the exact literal `true` = rides gated off, never the reverse |
+| `STORE_RIDE_COORDINATES` | Runtime | ADR-0029. Exact literal `true` to store geocoded pickup/dropoff coordinates at booking — bills Mapbox per booking. Missing = null coordinates, no spend |
 
 Full descriptions of each: `apps/web/.env.example`.
 
